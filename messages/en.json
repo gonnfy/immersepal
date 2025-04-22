@@ -1,0 +1,15 @@
+{
+    "HomePage": {
+      "title": "Hello world!",
+      "about": "Go to the about page"
+    },
+    "cardCreateForm": {
+      "frontLabel": "Front",
+      "frontPlaceholder": "Enter front text...",
+      "backLabel": "Back",
+      "backPlaceholder": "Enter back text...",
+      "createButton": "Add Card",
+      "creatingButton": "Creating...",
+      "creationError": "Error creating card: {message}"
+    }
+  }

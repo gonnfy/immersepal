@@ -1,0 +1,148 @@
+// prisma/schema.prisma
+
+// --- 基本設定 ---
+
+datasource db {
+  provider     = "postgresql" // Supabase は PostgreSQL
+  url          = env("DATABASE_URL") // Supabase から取得する接続文字列
+  relationMode = "prisma" // Prisma のリレーション管理方式 (推奨)
+  // 注意: Supabase の Connection Pooling を使う場合、マイグレーション用に直接接続URL(DIRECT_URL)も設定が必要な場合があります
+  // directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js" // Prisma Client (Node.js用) を生成
+  output   = "../node_modules/.prisma/client" // Generate into the recommended hidden directory
+}
+
+// --- Enum 定義 ---
+
+// 学習時のユーザー評価
+enum StudyRating {
+  AGAIN // もう一度 (忘れた)
+  HARD  // 難しい
+  GOOD  // 普通
+  EASY  // 簡単
+}
+
+// (任意) カードの学習状態を示す Enum (SRSアルゴリズムにより複雑化する場合)
+// enum StudyState {
+//   NEW        // 未学習
+//   LEARNING   // 学習中 (短い間隔で繰り返し)
+//   REVIEW     // 復習段階 (長い間隔)
+//   RELEARNING // 再学習中 (忘れたカード)
+// }
+
+
+// --- モデル定義 ---
+
+// ユーザーモデル
+model User {
+  // ★★★ 重要 ★★★
+  // Supabase Auth のユーザーID (auth.users.id) と必ず一致させること。
+  // アプリケーション側で User レコードを作成する際に、認証ユーザーのIDを指定する必要があります。
+  id        String    @id @db.Uuid // Supabase Auth の ID (UUID) に合わせる
+
+  // Supabase Auth で管理される情報と重複するものは必須ではない (例: email)
+  email     String?   @unique // 参考用、またはアプリ固有の通知などに利用する場合
+  name      String?   // ユーザーが表示名を設定できるようにする場合
+  avatarUrl String?   // アバター画像のURL
+
+  // notificationPreferences Json? // 通知設定などをJSONで持つ場合 (より正規化するなら別テーブル)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // リレーション: このユーザーが所有するデッキ
+  decks     Deck[]
+  // リレーション: このユーザーの学習ログ (統計用)
+  studyLogs StudyLog[]
+}
+
+// デッキモデル
+model Deck {
+  id          String    @id @default(cuid()) // CUID をデフォルトIDに
+  name        String    // デッキ名 (必須)
+  description String?   // デッキの説明 (任意)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // リレーション: 所有者であるユーザー
+  userId      String    @db.Uuid // User.id を参照
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade) // ユーザー削除時にデッキも削除
+
+  // リレーション: このデッキに含まれるカード
+  cards       Card[]
+
+  // ユーザーごとにデッキ名はユニークにする制約
+  @@unique([userId, name])
+  // ユーザーIDでの検索を効率化するためのインデックス
+  @@index([userId])
+}
+
+// カードモデル (単語・例文カード)
+model Card {
+  id          String    @id @default(cuid())
+  front       String    @db.Text // 表面のテキスト (リッチテキスト対応のため Text 型)
+  back        String    @db.Text // 裏面のテキスト (リッチテキスト対応のため Text 型)
+
+  // AI生成コンテンツ (任意)
+  frontAudioUrl String?   // 表面の音声ファイルURL (GCSなど)
+  backAudioUrl  String?   // 裏面の音声ファイルURL (GCSなど)
+  explanation   String?   @db.Text // AIによる解説
+  translation   String?   @db.Text // AIによる翻訳
+
+  // SRS (間隔反復システム) メタデータ
+  interval      Int       @default(0)    // 次回復習までの間隔 (日単位など、アルゴリズムによる)
+  easeFactor    Float     @default(2.5)  // 簡単さの係数 (アルゴリズムによる)
+  nextReviewAt  DateTime  @default(now()) // 次回復習日時 (この日時を過ぎたら復習対象)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // リレーション: このカードが含まれるデッキ
+  deckId        String
+  deck          Deck      @relation(fields: [deckId], references: [id], onDelete: Cascade) // デッキ削除時にカードも削除
+
+  // リレーション: このカードの学習ログ (統計用)
+  studyLogs     StudyLog[]
+
+  // デッキIDでの検索用インデックス
+  @@index([deckId])
+  // ★ 次回復習日時での検索（復習対象カード取得）を効率化するためのインデックス (重要) ★
+  @@index([nextReviewAt])
+  // 複合インデックス（必要に応じて検討）
+  // @@index([deckId, nextReviewAt])
+}
+
+// (任意) 学習ログモデル (統計機能用)
+model StudyLog {
+  id          String      @id @default(cuid())
+  reviewedAt  DateTime    @default(now()) // 学習(評価)した日時
+  rating      StudyRating // その時のユーザー評価
+
+  // このレビュー直前のカード状態 (統計やデバッグ用)
+  previousInterval    Int
+  previousEaseFactor  Float
+  // previousState    StudyState? // 必要なら学習状態も記録
+
+  // このレビュー直後のカード状態 (SRS計算結果)
+  newInterval         Int
+  newEaseFactor       Float
+  nextReviewAt        DateTime
+
+  // リレーション: 学習したユーザー
+  userId              String    @db.Uuid
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // リレーション: 学習したカード
+  cardId              String
+  card                Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([cardId])
+  @@index([reviewedAt])
+  // ユーザーごとのカード学習履歴取得用インデックス (任意)
+  // @@index([userId, cardId, reviewedAt])
+}
