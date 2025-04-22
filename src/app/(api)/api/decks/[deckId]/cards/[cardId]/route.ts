@@ -78,8 +78,7 @@ export async function PUT(
   let body: unknown;
   try {
     body = await request.json();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (_e) { // _e は使わないが、catch 節は必要
+  } catch (_e) { // _e は使わないが、catch 節は必要 (Removed unused eslint-disable comment)
     return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
   }
 

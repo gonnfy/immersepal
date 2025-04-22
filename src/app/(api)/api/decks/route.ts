@@ -21,8 +21,7 @@ export async function POST(request: Request) {
     let body: DeckCreatePayload;
     try {
       body = await request.json();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (_e) {
+    } catch (_e) { // Removed unused eslint-disable comment
       return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON format.' }, { status: 400 });
     }
 

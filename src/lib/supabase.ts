@@ -107,13 +107,9 @@ export const createAdminClient = () => {
                 detectSessionInUrl: false,
             },
             cookies: {
-                // ★★★ ここに disable コメントを追加 ★★★
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
                 get(_name: string) { return undefined; },
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                set(_name: string, _value: string, _options: CookieOptions) {},
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                remove(_name: string, _options: CookieOptions) {},
+                set(_name: string, _value: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
+                remove(_name: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
             }
         }
     )

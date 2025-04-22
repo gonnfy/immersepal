@@ -90,8 +90,7 @@ const deleteCardApi = async (
       if (contentType && contentType.includes('application/json')) {
         errorData = await response.json();
       }
-    // ★★★ Added disable comment ★★★
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      
     } catch (_e) { // _e is unused
       console.warn("Could not parse error response body for DELETE card request.");
     }
