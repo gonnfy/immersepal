@@ -1,15 +1,17 @@
-// src/hooks/useDeckMutations.ts
+// src/hooks/useDeckMutations.ts (API パス修正適用版)
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from './useAuth'; // Import useAuth
-import { AuthError } from '@supabase/supabase-js'; // Import AuthError directly
-import { ApiErrorResponse, DeckApiResponse, DeckCreatePayload } from '../types/api.types'; // Use DeckCreatePayload
+import { useAuth } from './useAuth';
+import { AuthError } from '@supabase/supabase-js';
+// ★ 必要な型をインポート。パスが /types/api.types.ts に変更されているか確認 ★
+import { ApiErrorResponse, DeckApiResponse, DeckCreatePayload } from '../types';
 
-// Define and export a custom error class for API errors
-export class ApiError extends Error { // Add export
+// ★ ApiError クラスの定義 (重複定義を避けるため、lib/errors.ts など共通の場所に移動することも検討) ★
+// もし lib/errors.ts に同等のものがあればそちらをインポート
+export class ApiError extends Error {
   status: number;
-  details?: any;
+  details?: unknown; // Changed from any
 
-  constructor(message: string, status: number, details?: any) {
+  constructor(message: string, status: number, details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
@@ -18,9 +20,9 @@ export class ApiError extends Error { // Add export
 }
 
 // --- Create Deck ---
-const createDeckApi = async ({ deckData }: { deckData: DeckCreatePayload }): Promise<DeckApiResponse> => { // Use DeckCreatePayload
-  const apiUrl = `/api/decks`;
-  // ★★★ fetch 直前の URL をログ出力 ★★★
+// ★ locale 引数を削除 ★
+const createDeckApi = async ({ deckData }: { deckData: DeckCreatePayload }): Promise<DeckApiResponse> => {
+  const apiUrl = `/api/decks`; // ★ locale なし ★
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
@@ -30,7 +32,7 @@ const createDeckApi = async ({ deckData }: { deckData: DeckCreatePayload }): Pro
   });
 
   if (!response.ok) {
-    const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+    const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response', error: 'PARSE_ERROR' })); // Ensure error property exists
     throw new ApiError(errorData.message || `HTTP error! status: ${response.status}`, response.status, errorData.details);
   }
   return response.json();
@@ -40,17 +42,19 @@ export const useCreateDeck = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const userId = user?.id;
+  // const params = useParams(); // ★ 不要なら削除 ★
+  // const locale = typeof params?.locale === 'string' ? params.locale : 'en'; // ★ 不要なら削除 ★
 
-  const mutation = useMutation<DeckApiResponse, ApiError | AuthError, DeckCreatePayload>({ // Use DeckCreatePayload
-    mutationFn: (deckData: DeckCreatePayload) => createDeckApi({ deckData }), // Use DeckCreatePayload
+  const mutation = useMutation<DeckApiResponse, ApiError | AuthError, DeckCreatePayload>({
+    // ★ locale 引数を削除 ★
+    mutationFn: (deckData: DeckCreatePayload) => createDeckApi({ deckData }),
     onSuccess: (data) => {
-      // Invalidate and refetch decks query after successful creation
+      // ★ queryKey から locale を削除 (データが locale に依存しない場合) ★
       queryClient.invalidateQueries({ queryKey: ['decks', userId] });
       console.log('Deck created successfully:', data);
     },
     onError: (error) => {
       console.error('Error creating deck:', error);
-      // Handle specific errors (e.g., show notification)
     },
   });
 
@@ -59,17 +63,16 @@ export const useCreateDeck = () => {
 
 
 // --- Delete Deck ---
+// ★ locale 引数を削除 ★
 const deleteDeckApi = async ({ deckId }: { deckId: string }): Promise<void> => {
-  const apiUrl = `/api/decks/${deckId}`;
-  // ★★★ fetch 直前の URL をログ出力 ★★★
+  const apiUrl = `/api/decks/${deckId}`; // ★ locale なし ★
   const response = await fetch(apiUrl, {
     method: 'DELETE',
   });
-  if (response.status !== 204) { // No Content on success
-     const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+  if (response.status !== 204) {
+     const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response', error: 'PARSE_ERROR' }));
      throw new ApiError(errorData.message || `HTTP error! status: ${response.status}`, response.status, errorData.details);
   }
-  // No return needed for 204
 };
 
 
@@ -77,26 +80,23 @@ export const useDeleteDeck = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const userId = user?.id;
+  // const params = useParams(); // ★ 不要なら削除 ★
+  // const locale = typeof params?.locale === 'string' ? params.locale : 'en'; // ★ 不要なら削除 ★
 
   const mutation = useMutation<void, ApiError | AuthError, { deckId: string }>({
+    // ★ locale 引数を削除 ★
     mutationFn: ({ deckId }: { deckId: string }) => deleteDeckApi({ deckId }),
     onSuccess: (_, variables) => {
-      // Invalidate and refetch decks query after successful deletion
+      // ★ queryKey から locale を削除 ★
       queryClient.invalidateQueries({ queryKey: ['decks', userId] });
-      // Optionally remove the specific deck from the cache immediately
-      // queryClient.setQueryData(['decks', userId, locale], (oldData: DeckApiResponse[] | undefined) =>
-      //   oldData ? oldData.filter(deck => deck.id !== variables.deckId) : []
-      // );
       console.log(`Deck ${variables.deckId} deleted successfully`);
     },
     onError: (error, variables) => {
       console.error(`Error deleting deck ${variables.deckId}:`, error);
-      // Handle specific errors
     },
   });
 
   return mutation;
 };
 
-// --- Update Deck (Example - Assuming similar structure) ---
-// Add useUpdateDeck hook here if needed, ensuring locale is handled similarly.
+// --- Update Deck (もし実装する場合も同様に locale を削除) ---

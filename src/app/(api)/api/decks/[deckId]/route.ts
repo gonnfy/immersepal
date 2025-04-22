@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerUserId } from '@/lib/auth'; // Adjusted import path
 import { deleteDeck, getDeckById } from '@/services/deck.service'; // Adjusted import path - Added getDeckById
-import { AppError, isAppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Adjusted import path
+import { isAppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Adjusted import path
 import { ApiErrorResponse } from '@/types/api.types'; // Added import for error response type
 
 // GET handler to retrieve a specific deck by ID

@@ -48,9 +48,14 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
   if (error) {
     if (error instanceof ApiError) {
       errorMessage = `Error: ${error.message} (Status: ${error.status})`;
-      // Access the machine-readable code from the details property
-      if (error.details?.error) {
-        errorMessage += ` [Code: ${error.details.error}]`;
+      // Safely access the machine-readable code from the details property
+      if (typeof error.details === 'object' && error.details !== null && 'error' in error.details) {
+        // Now we know error.details is an object with an 'error' property
+        // We might still want to check the type of error.details.error if needed
+        const errorCode = (error.details as { error?: unknown }).error; // Cast to access
+        if (errorCode) { // Check if errorCode is truthy
+             errorMessage += ` [Code: ${errorCode}]`;
+        }
       }
     } else if (error instanceof AuthError) {
         errorMessage = `Authentication Error: ${error.message}`;

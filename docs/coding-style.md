@@ -6,9 +6,24 @@
 
 ## 2. 自動化ツール
 
-* **フォーマッター:** **Prettier** を使用します。設定はプロジェクトルートのファイル (`prettier.config.js` or `package.json`) に従います。エディタでの自動整形と CI でのチェック (`prettier --check`) を推奨します。
-* **リンター:** **ESLint** を使用します。設定は `.eslintrc.json` に従い、TypeScript, React, React Hooks, Next.js 用のプラグインを適切に設定します。エディタでのリアルタイムチェックと CI でのチェック (`eslint .`) を推奨します。
+プロジェクトのコード品質と一貫性を保つために、以下の自動化ツールを利用します。
 
+* **フォーマッター:** **Prettier**
+    * **目的:** コードの見た目に関するスタイル（インデント、スペース、改行など）を自動で統一します。
+    * **設定:** プロジェクトルートの Prettier 設定ファイル (`prettier.config.js`, `.prettierrc.json` など) に従います。
+    * **運用:** エディタの保存時自動整形 (Format on Save) の利用を強く推奨します。CI (GitHub Actions) でもフォーマットが正しいかのチェック (`bun run format:check` 等) を行うことが望ましいです。
+
+* **リンター:** **ESLint**
+    * **目的:** コードの潜在的なバグ、アンチパターン、およびスタイルガイドライン違反（フォーマッターが扱わない範囲）を静的に解析・検出します。
+    * **設定:** プロジェクトルートにある **`[ESLint設定ファイル名]`** (例: `.eslintrc.json`, `eslint.config.js` など。**実際のファイル名に置き換えてください**) が、適用される ESLint ルールの**唯一の正 (Source of Truth)** となります。この設定ファイルには、TypeScript, React, React Hooks, Next.js 用のプラグインやルールが適切に設定されています（または設定されるべきです）。
+    * **実行:** コードの静的解析とルールチェックは、以下のコマンドで実行します。
+        ```bash
+        bun run lint
+        ```
+        *(package.json の `scripts` 内で定義されているコマンド)*
+    * **必須事項:**
+        * エディタ (VS Code など) に ESLint 拡張機能を導入し、**リアルタイムでのエラー/警告表示と、可能な範囲での自動修正 (Auto Fix on Save) を有効にすること**を強く推奨します。
+        * CI (GitHub Actions) でもこの `lint` コマンドが自動実行され、**エラーなくチェックをパスすることが必須**となります。すべてのコードは、上記の設定ファイルに定義された ESLint ルールに準拠する必要があります。
 ## 3. TypeScript
 
 * `tsconfig.json` で `strict: true` を有効にします。

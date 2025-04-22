@@ -9,8 +9,8 @@ interface AuthHookValue {
     user: User | null;
     isLoading: boolean;
     // Auth functions
-    signUp: (email: string, password: string) => Promise<any>; // Return type inferred
-    signIn: (email: string, password: string) => Promise<any>; // Return type inferred
+    signUp: (email: string, password: string) => Promise<{ data: { user: User | null; session: Session | null; }; error: AuthError | null; }>;
+    signIn: (email: string, password: string) => Promise<{ data: { user: User | null; session: Session | null; }; error: AuthError | null; }>;
     signOut: () => Promise<{ error: AuthError | null }>;
 }
 
@@ -66,6 +66,9 @@ export const useAuth = (): AuthHookValue => {
 };
 
 // Type guard to check for AuthError
-export function isAuthError(error: any): error is AuthError {
-    return error && typeof error === 'object' && 'message' in error && 'status' in error;
+export function isAuthError(error: unknown): error is AuthError {
+    if (error && typeof error === 'object') {
+        return 'message' in error && 'status' in error;
+    }
+    return false;
 }

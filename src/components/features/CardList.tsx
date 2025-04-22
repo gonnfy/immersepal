@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useCards } from '@/hooks/useCards';
+import { useCards, Card } from '@/hooks/useCards'; // Import Card type from useCards
 // Import Card type from useCardMutations (expects string dates), alias it for clarity
 import { useDeleteCard, Card as CardWithStringDates } from '@/hooks/useCardMutations';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
@@ -70,7 +70,7 @@ export const CardList: React.FC<CardListProps> = ({ deckId }) => {
   // Handler to open the edit modal
   // Accepts a card object from useCards (with Date fields)
   // Converts it to CardWithStringDates before setting state
-  const handleEditClick = (cardFromUseCards: any) => { // Using 'any' for the input type from useCards
+  const handleEditClick = (cardFromUseCards: Card) => { // Use the imported Card type
     if (!cardFromUseCards) return;
     // Create the object for the modal state, converting dates to ISO strings
     const cardForModal: CardWithStringDates = {

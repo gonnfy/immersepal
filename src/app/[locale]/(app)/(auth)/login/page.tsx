@@ -1,10 +1,10 @@
+// src/app/[locale]/(app)/(auth)/login/page.tsx
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-// Import useAuth hook
 import { useAuth } from '@/hooks/useAuth';
-import { Link } from '@/i18n/navigation'; // '@/' は src/ へのエイリアスと仮定
+import { Link } from '@/i18n/navigation';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -12,29 +12,27 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-  const { signIn } = useAuth(); // Use the hook
+  const { signIn } = useAuth();
+  const [message, setMessage] = useState<string | null>(null)
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setMessage(null)
 
-    // Call the actual Supabase function via the hook
-    const { error: signInError } = await signIn(email, password); // Pass email, password
+    const { error: signInError } = await signIn(email, password);
 
     if (signInError) {
       setError(signInError.message)
       setLoading(false)
     } else {
-      // Success! Redirect to dashboard.
-      setMessage('Login successful! Redirecting...') // Optional message
-      router.push('/dashboard') // Redirect to dashboard or desired page
-      // No need to setLoading(false) here as we are navigating away
+      setMessage('Login successful! Redirecting...')
+      // Redirect to the main decks page after login
+      router.push('/decks')
     }
   }
 
-  // Added state for success message (optional)
-  const [message, setMessage] = useState<string | null>(null)
 
   return (
     <div style={{ maxWidth: '400px', margin: 'auto', paddingTop: '50px' }}>
@@ -72,12 +70,12 @@ export default function LoginPage() {
       </form>
       {error && <p style={{ color: 'red', marginTop: '10px' }}>Error: {error}</p>}
       {message && <p style={{ color: 'green', marginTop: '10px' }}>{message}</p>}
-      {/* Optional: Links */}
       <p style={{ marginTop: '20px' }}>
-        Don't have an account? <Link href="/signup">Sign Up</Link>
+        {/* ★★★ Fixed ' error ★★★ */}
+        Don&apos;t have an account? <Link href="/signup">Sign Up</Link>
       </p>
       {/* <p style={{ marginTop: '10px' }}>
-        <a href="/forgot-password">Forgot Password?</a>
+        <Link href="/forgot-password">Forgot Password?</Link>
       </p> */}
     </div>
   )

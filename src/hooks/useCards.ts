@@ -11,7 +11,7 @@ import { AppError, isAppError } from '@/lib/errors';
 // const [refreshKey, setRefreshKey] = useState<number>(0);
 
 // Workaround: Define Card type locally (Prisma Client 型が使えない場合)
-type Card = {
+export type Card = {
     id: string;
     front: string;
     back: string;
@@ -27,6 +27,32 @@ type Card = {
     deckId: string;
 };
 
+// Interface for the raw data expected from the API before date conversion
+interface RawCardData {
+    id: string;
+    front: string;
+    back: string;
+    frontAudioUrl?: string | null;
+    backAudioUrl?: string | null;
+    explanation?: string | null;
+    translation?: string | null;
+    interval: number;
+    easeFactor: number;
+    nextReviewAt: string; // Expect string from API
+    createdAt: string;    // Expect string from API
+    updatedAt: string;    // Expect string from API
+    deckId: string;
+    // Add any other properties returned by the API
+}
+
+// Interface for potential error object structure
+interface ApiErrorLike {
+    message?: string;
+    errorCode?: string;
+    details?: unknown;
+    // Add other potential error properties if known
+}
+
 // --- API からカードデータを取得する非同期関数 ---
 // (useQuery の queryFn として使われる)
 const fetchCardsByDeckId = async (deckId: string): Promise<Card[]> => {
@@ -39,7 +65,7 @@ const fetchCardsByDeckId = async (deckId: string): Promise<Card[]> => {
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
-        let errorData: any = { message: `HTTP error! status: ${response.status}` };
+        let errorData: ApiErrorLike = { message: `HTTP error! status: ${response.status}` };
         try {
             const contentType = response.headers.get('content-type');
             if (response.body && contentType && contentType.includes('application/json')) {
@@ -47,20 +73,35 @@ const fetchCardsByDeckId = async (deckId: string): Promise<Card[]> => {
             } else if (response.body) {
                  const textResponse = await response.text();
                  console.warn(`[useCards fetcher] Received non-JSON error response: ${textResponse.substring(0,100)}`);
-                 errorData.message = textResponse.substring(0,100); // エラーメッセージとして一部利用
+                 // Ensure errorData is an object before assigning
+                 if (typeof errorData === 'object' && errorData !== null) {
+                    errorData.message = textResponse.substring(0,100); // エラーメッセージとして一部利用
+                 }
             }
         } catch (e) {
             console.warn('[useCards fetcher] Could not parse error response body:', e);
         }
         // AppError の形式に近いか、あるいは汎用エラーを投げる
-        if (errorData.errorCode && isAppError(errorData)) {
-           throw new AppError(errorData.message, response.status, errorData.errorCode, errorData.details);
+        // Use the type guard first
+        if (isAppError(errorData)) {
+           // TypeScript knows errorData is AppError, so errorCode is ErrorCode type
+           throw new AppError(
+               errorData.message, // message is guaranteed string by AppError
+               response.status,
+               errorData.errorCode, // No cast needed
+               errorData.details
+           );
         } else {
-           throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+           // Handle non-AppError cases (might still have a message property)
+           const errorMessage = (typeof errorData === 'object' && errorData !== null && 'message' in errorData && typeof errorData.message === 'string')
+                                ? errorData.message
+                                : `HTTP error! status: ${response.status}`;
+           throw new Error(errorMessage);
         }
     }
 
-    const data: any[] = await response.json();
+    // Assume the API returns an array of objects matching RawCardData
+    const data: RawCardData[] = await response.json();
     // API が日付を文字列で返す場合、ここで Date オブジェクトに変換
     const typedData: Card[] = data.map(item => ({
         ...item,

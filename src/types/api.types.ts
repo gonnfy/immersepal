@@ -38,7 +38,7 @@ export type ApiErrorResponse = {
   /** A user-friendly message describing the error. */
   message: string;
   /** Optional additional details about the error (e.g., validation failures). */
-  details?: any;
+  details?: unknown;
 };
 /**
  * Structure for pagination metadata returned by the API.

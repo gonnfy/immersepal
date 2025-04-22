@@ -36,13 +36,20 @@ export const getServerUser = async (): Promise<ServerUserResult> => {
 
     return { user, error: null }
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Catch potential errors during client creation or cookie access
     console.error("Unexpected error in getServerUser:", err)
+    // Determine the error message safely
+    let errorMessage = 'An unexpected error occurred retrieving server user.';
+    if (typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string') {
+        errorMessage = err.message;
+    } else if (err instanceof Error) {
+        errorMessage = err.message;
+    }
     // Return a simpler error object
     const error: ServerAuthCatchError = {
         name: 'ServerAuthCatchError',
-        message: err.message || 'An unexpected error occurred retrieving server user.',
+        message: errorMessage,
         status: 500, // Internal Server Error
     };
     return { user: null, error };

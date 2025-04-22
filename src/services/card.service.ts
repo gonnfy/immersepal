@@ -1,5 +1,5 @@
 import prisma from '@/lib/db'; // Use the same prisma instance as other services
-import { Card, Deck } from '@prisma/client'; // Import Card type
+import { Card } from '@prisma/client'; // Import Card type
 import { AppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Import custom errors
 import type { Result } from '@/types'; // Import Result type
 import type { CardUpdatePayload } from '@/lib/zod'; // Import Zod payload type
@@ -130,9 +130,14 @@ export const deleteCard = async (userId: string, deckId: string, cardId: string)
       },
     });
 
-  } catch (error: any) {
-    // Handle Prisma's specific 'RecordNotFound' error if findFirstOrThrow fails
-    if (error.code === 'P2025' || error instanceof NotFoundError) {
+  } catch (error: unknown) {
+    // Handle Prisma's specific 'RecordNotFound' error (P2025) and our NotFoundError
+    let isPrismaNotFoundError = false;
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+        isPrismaNotFoundError = (error as { code?: unknown }).code === 'P2025';
+    }
+
+    if (isPrismaNotFoundError || error instanceof NotFoundError) {
         // P2025 can mean either the card doesn't exist OR the deck/user condition failed.
         // We treat both as a NotFound or Permission issue from the client's perspective.
         // A more specific check could be done by querying the card first, then the deck,

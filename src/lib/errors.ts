@@ -16,9 +16,9 @@ export const ERROR_CODES = {
   export class AppError extends Error {
     public readonly statusCode: number;
     public readonly errorCode: ErrorCode;
-    public readonly details?: any;
-  
-    constructor(message: string, statusCode: number, errorCode: ErrorCode, details?: any) {
+    public readonly details?: unknown;
+
+    constructor(message: string, statusCode: number, errorCode: ErrorCode, details?: unknown) {
       super(message);
       this.statusCode = statusCode;
       this.errorCode = errorCode;
@@ -32,7 +32,7 @@ export const ERROR_CODES = {
   // --- 具体的なエラークラス ---
   
   export class ValidationError extends AppError {
-    constructor(message: string = 'Invalid input data.', details?: any) {
+    constructor(message: string = 'Invalid input data.', details?: unknown) {
       super(message, 400, ERROR_CODES.VALIDATION_ERROR, details);
     }
   }
