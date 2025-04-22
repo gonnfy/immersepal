@@ -42,5 +42,5 @@ jobs:
         run: bun run build
         # ビルドに必要な環境変数はそのまま (通常 bun run でも解釈される)
         env:
-  NEXT_PUBLIC_SUPABASE_URL: ${{ vars.https://ieepmqfqnkncjnzwtgpy.supabase.co }}
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZXBtcWZxbmtuY2puend0Z3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMxNTU3NDQsImV4cCI6MjA1ODczMTc0NH0.WLBEHFUl2GyhDH249Q2xWvwBeG8HfYWeUWcJeGrtaE8 }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.https://ieepmqfqnkncjnzwtgpy.supabase.co }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZXBtcWZxbmtuY2puend0Z3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMxNTU3NDQsImV4cCI6MjA1ODczMTc0NH0.WLBEHFUl2GyhDH249Q2xWvwBeG8HfYWeUWcJeGrtaE8 }}
