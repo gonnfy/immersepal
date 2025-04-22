@@ -1,21 +1,43 @@
 import prisma from '@/lib/db'; // Use the same prisma instance as other services
-import { Card } from '@prisma/client'; // Import Card type
+import { Card } from '@prisma/client'; // Import Card type directly again
 import { AppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Import custom errors
 import type { Result } from '@/types'; // Import Result type
 import type { CardUpdatePayload } from '@/lib/zod'; // Import Zod payload type
 
+// Define options and result types for pagination
+interface GetCardsByDeckIdOptions {
+  limit?: number;
+  offset?: number;
+}
+
+type GetCardsByDeckIdResult = {
+  data: Card[]; // Use direct Card type
+  totalItems: number;
+};
+
 /**
- * Fetches cards belonging to a specific deck, ensuring user ownership.
+ * Fetches cards belonging to a specific deck with pagination, ensuring user ownership.
  * @param userId - The ID of the user requesting the cards.
  * @param deckId - The ID of the deck.
- * @returns A promise that resolves to an array of cards.
+ * @param options - Optional parameters for pagination (limit, offset).
+ * @returns A promise that resolves to an object containing the cards array and total item count.
  * @throws {NotFoundError} If the deck is not found.
  * @throws {PermissionError} If the user does not own the deck.
  * @throws {DatabaseError} If any other database error occurs.
  */
-export const getCardsByDeckId = async (userId: string, deckId: string): Promise<Card[]> => {
+export const getCardsByDeckId = async (
+  userId: string,
+  deckId: string,
+  options: GetCardsByDeckIdOptions = {}
+): Promise<GetCardsByDeckIdResult> => {
+  // Set default values and validate limit/offset
+  const limit = options.limit ?? 10; // Default limit: 10
+  const offset = options.offset ?? 0; // Default offset: 0
+  const validatedLimit = Math.max(1, limit); // Ensure limit is at least 1
+  const validatedOffset = Math.max(0, offset); // Ensure offset is non-negative
+
   try {
-    // 1. Verify deck existence and ownership
+    // 1. Verify deck existence and ownership (existing logic)
     const deck = await prisma.deck.findUnique({
       where: {
         id: deckId,
@@ -32,18 +54,26 @@ export const getCardsByDeckId = async (userId: string, deckId: string): Promise<
         throw new PermissionError(`User does not have permission to access deck with ID ${deckId}.`);
     }
 
-    // 2. Fetch cards if ownership is confirmed
-    const cards = await prisma.card.findMany({
-      where: {
-        deckId: deckId, // Fetch cards for the confirmed deck
-      },
-      orderBy: {
-        createdAt: 'asc', // Or any other desired order
-      },
-    });
-    return cards;
+    // 2. Fetch cards and count total items in parallel if ownership is confirmed
+    const [cards, totalItems] = await prisma.$transaction([
+      prisma.card.findMany({
+        where: { deckId: deckId }, // Only fetch cards for this deck
+        orderBy: { createdAt: 'asc' }, // Or your desired order
+        skip: validatedOffset, // Use validated offset for skipping
+        take: validatedLimit, // Use validated limit for taking
+      }),
+      prisma.card.count({
+        where: { deckId: deckId }, // Count cards only for this deck
+      }),
+    ]);
+
+    // 3. Return the paginated data and total count
+    return {
+      data: cards,
+      totalItems: totalItems,
+    };
   } catch (error) {
-    // Re-throw known application errors
+    // Re-throw known application errors (existing logic)
     if (error instanceof NotFoundError || error instanceof PermissionError) {
       throw error;
     }
@@ -169,7 +199,7 @@ export const updateCard = async (
   deckId: string,
   cardId: string,
   data: CardUpdatePayload // Use Zod payload type
-): Promise<Result<Card, AppError>> => { // Return Result type
+): Promise<Result<Card, AppError>> => { // Return Result type with direct Card
 
   // 1. Verify card existence and ownership via the deck using findFirst
   const card = await prisma.card.findFirst({

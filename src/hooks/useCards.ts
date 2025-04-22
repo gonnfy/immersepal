@@ -1,71 +1,39 @@
-// src/hooks/useCards.ts (useQuery を使うように修正)
+// src/hooks/useCards.ts (Updated for pagination)
 
-import { useQuery } from '@tanstack/react-query'; // ★ useQuery をインポート ★
+import { useQuery } from '@tanstack/react-query';
 import { AppError, isAppError } from '@/lib/errors';
-// import { Card } from '@prisma/client'; // もし Prisma Client の型が使えるならこちらを推奨
+// Import types needed for pagination and the card data structure
+import { type PaginatedCardsResponse, type CardApiResponse } from '@/types/api.types';
 
-// ★ 手動の状態管理 (useState) は削除 ★
-// const [cards, setCards] = useState<Card[] | null>(null);
-// const [isLoading, setIsLoading] = useState<boolean>(true);
-// const [error, setError] = useState<AppError | Error | null>(null);
-// const [refreshKey, setRefreshKey] = useState<number>(0);
-
-// Workaround: Define Card type locally (Prisma Client 型が使えない場合)
-export type Card = {
-    id: string;
-    front: string;
-    back: string;
-    frontAudioUrl?: string | null;
-    backAudioUrl?: string | null;
-    explanation?: string | null;
-    translation?: string | null;
-    interval: number;
-    easeFactor: number;
-    nextReviewAt: Date; // API が Date 型を返すか、文字列なら Date に変換
-    createdAt: Date;
-    updatedAt: Date;
-    deckId: string;
-};
-
-// Interface for the raw data expected from the API before date conversion
-interface RawCardData {
-    id: string;
-    front: string;
-    back: string;
-    frontAudioUrl?: string | null;
-    backAudioUrl?: string | null;
-    explanation?: string | null;
-    translation?: string | null;
-    interval: number;
-    easeFactor: number;
-    nextReviewAt: string; // Expect string from API
-    createdAt: string;    // Expect string from API
-    updatedAt: string;    // Expect string from API
-    deckId: string;
-    // Add any other properties returned by the API
-}
-
-// Interface for potential error object structure
+// Interface for potential error object structure from the API
+// Consider using ApiErrorResponse from api.types.ts if it matches the actual error structure
 interface ApiErrorLike {
     message?: string;
-    errorCode?: string;
+    errorCode?: string; // Assuming AppError might add this
     details?: unknown;
-    // Add other potential error properties if known
 }
 
-// --- API からカードデータを取得する非同期関数 ---
-// (useQuery の queryFn として使われる)
-const fetchCardsByDeckId = async (deckId: string): Promise<Card[]> => {
+// --- API function to fetch paginated cards ---
+// Renamed and updated to handle pagination parameters and response structure
+const fetchPaginatedCards = async (deckId: string, offset: number, limit: number): Promise<PaginatedCardsResponse> => {
     if (!deckId) {
-        throw new Error('Deck ID is missing. Cannot fetch cards.');
+        // This check is important, although 'enabled' should prevent calls without deckId
+        throw new Error('Deck ID is required to fetch cards.');
     }
 
-    const apiUrl = `/api/decks/${deckId}/cards`;
+    // Construct URL with pagination query parameters
+    const params = new URLSearchParams({
+        offset: offset.toString(),
+        limit: limit.toString(),
+    });
+    const apiUrl = `/api/decks/${deckId}/cards?${params.toString()}`; // Use locale-independent path
     console.log(`[useCards fetcher] Fetching cards from: ${apiUrl}`);
+
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
-        let errorData: ApiErrorLike = { message: `HTTP error! status: ${response.status}` };
+        // --- Error Handling ---
+        let errorData: ApiErrorLike = { message: `Failed to fetch cards for deck ${deckId}. Status: ${response.status}` };
         try {
             const contentType = response.headers.get('content-type');
             if (response.body && contentType && contentType.includes('application/json')) {
@@ -73,78 +41,91 @@ const fetchCardsByDeckId = async (deckId: string): Promise<Card[]> => {
             } else if (response.body) {
                  const textResponse = await response.text();
                  console.warn(`[useCards fetcher] Received non-JSON error response: ${textResponse.substring(0,100)}`);
-                 // Ensure errorData is an object before assigning
+                 // Ensure errorData is an object before assigning message
                  if (typeof errorData === 'object' && errorData !== null) {
-                    errorData.message = textResponse.substring(0,100); // エラーメッセージとして一部利用
+                    errorData.message = textResponse.substring(0,100); // Use part of the text as the message
                  }
             }
         } catch (e) {
             console.warn('[useCards fetcher] Could not parse error response body:', e);
         }
-        // AppError の形式に近いか、あるいは汎用エラーを投げる
-        // Use the type guard first
+
+        // Throw specific AppError if possible, otherwise a generic Error
         if (isAppError(errorData)) {
-           // TypeScript knows errorData is AppError, so errorCode is ErrorCode type
+           // If errorData matches AppError structure (checked by type guard)
            throw new AppError(
-               errorData.message, // message is guaranteed string by AppError
+               errorData.message, // Guaranteed string by AppError
                response.status,
-               errorData.errorCode, // No cast needed
+               errorData.errorCode, // Guaranteed ErrorCode by AppError
                errorData.details
            );
         } else {
-           // Handle non-AppError cases (might still have a message property)
+           // Handle cases where errorData is not a structured AppError
            const errorMessage = (typeof errorData === 'object' && errorData !== null && 'message' in errorData && typeof errorData.message === 'string')
-                                ? errorData.message
-                                : `HTTP error! status: ${response.status}`;
+                                ? errorData.message // Use message if available
+                                : `Failed to fetch cards for deck ${deckId}. Status: ${response.status}`; // Fallback message
            throw new Error(errorMessage);
         }
+        // --- End Error Handling ---
     }
 
-    // Assume the API returns an array of objects matching RawCardData
-    const data: RawCardData[] = await response.json();
-    // API が日付を文字列で返す場合、ここで Date オブジェクトに変換
-    const typedData: Card[] = data.map(item => ({
-        ...item,
-        nextReviewAt: new Date(item.nextReviewAt),
-        createdAt: new Date(item.createdAt),
-        updatedAt: new Date(item.updatedAt),
-    }));
-    return typedData;
+    // Assume the API returns the PaginatedCardsResponse structure directly
+    // No need for manual date conversion here if the API handles it or if done in 'select'
+    const data = await response.json();
+    // Perform a basic check or use a type guard if necessary before asserting
+    // For now, we trust the API contract and assert the type.
+    return data as PaginatedCardsResponse;
 };
 
-// --- useCards カスタムフック本体 ---
-export const useCards = (deckId: string | null) => {
-    // ★★★ useQuery を使用 ★★★
-    const {
-        data: cards, // data プロパティを 'cards' として受け取る
-        isLoading,
-        error,
-        // refetch // 手動で再取得したい場合に使う (今回は invalidate で十分なはず)
-    } = useQuery<Card[], Error | AppError>({ // 型を指定 (成功時は Card[], エラー時は Error または AppError)
-        // ★ queryKey: invalidateQueries で指定したキーと一致させる ★
-        // deckId が null や undefined の場合はクエリが無効になるようにする
-        queryKey: ['cards', deckId],
-        // ★ queryFn: データ取得関数を定義 ★
+
+// --- useCards Custom Hook ---
+
+// Define options for the hook
+interface UseCardsOptions {
+  offset?: number;
+  limit?: number;
+}
+
+// Update hook signature to accept pagination options
+export const useCards = (deckId: string | null, options: UseCardsOptions = {}) => {
+    // Get pagination options with default values
+    const { offset = 0, limit = 10 } = options;
+
+    // Use React Query's useQuery hook
+    const queryResult = useQuery<PaginatedCardsResponse, Error | AppError>({ // Update success type
+        // Update queryKey to include pagination parameters for unique caching per page
+        queryKey: ['cards', deckId, { offset, limit }],
+        // Update queryFn to call the paginated fetcher
         queryFn: () => {
-            // deckId が null でないことを保証してから fetcher を呼ぶ
+            // Double-check deckId existence (though 'enabled' handles this)
             if (!deckId) {
-                // この return は TypeScript の型チェックのため。実際には enabled: false で実行されない
-                return Promise.resolve([]);
+                // Should not happen if 'enabled' is working, return rejected promise
+                return Promise.reject(new Error("Deck ID is required."));
             }
-            return fetchCardsByDeckId(deckId);
+            // Call the updated fetcher with deckId and pagination params
+            return fetchPaginatedCards(deckId, offset, limit);
         },
-        // ★ enabled: deckId が存在する場合のみクエリを有効にする ★
+        // Ensure the query only runs when a valid deckId is provided
         enabled: !!deckId,
 
-        // (任意) キャッシュ設定など
-        // staleTime: 1 * 60 * 1000, // 1分
+        // Optional: Keep previous data while fetching new page for smoother UX
+        // keepPreviousData: true,
+        // Optional: Define staleTime if needed
+        // staleTime: 5 * 60 * 1000, // 5 minutes
     });
 
-    // ★ mutate 関数 (手動リフレッシュ用) は useQuery には不要なので削除 ★
-    // const mutate = () => {
-    //   setRefreshKey(prev => prev + 1);
-    // };
-
-    // ★ useQuery の結果を返す ★
-    return { cards: cards ?? null, isLoading, error }; // data が undefined の場合は null を返す
+    // Update the return value to provide cards array and pagination info separately
+    return {
+        // Access the nested 'data' array within the API response
+        cards: queryResult.data?.data ?? [], // Default to empty array if data is loading or error
+        // Access the 'pagination' object from the API response
+        pagination: queryResult.data?.pagination ?? null, // Default to null
+        // Pass through React Query status flags
+        isLoading: queryResult.isLoading,
+        isFetching: queryResult.isFetching, // Useful for showing loading indicators on refetch/pagination
+        error: queryResult.error, // Pass through any error object
+    };
 };
+
+// Export the Card type used in the response for components that need it
+export type { CardApiResponse as Card }; // Re-export CardApiResponse as Card
