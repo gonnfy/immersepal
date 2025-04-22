@@ -19,8 +19,16 @@ interface CardListProps {
 
 
 export const CardList: React.FC<CardListProps> = ({ deckId }) => {
+  // ★ Pagination State ★
+  const ITEMS_PER_PAGE = 10; // 1ページあたりの表示件数
+  const [offset, setOffset] = useState(0); // 現在のオフセット
+
+  // ★ Updated useCards hook call ★
   // useCards returns cards with Date objects for date fields
-  const { cards, isLoading, error } = useCards(deckId);
+  const { cards, pagination, isLoading, isFetching, error } = useCards(deckId, {
+    offset: offset,
+    limit: ITEMS_PER_PAGE,
+  });
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [cardToDelete, setCardToDelete] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false); // State to track client-side mount
@@ -163,6 +171,36 @@ return (
       )}
     </div>
     {/* </YStack> */}
+
+      {/* ★ Pagination Controls ★ */}
+      {!isLoading && !error && pagination && pagination.totalItems > 0 && (
+        <div className="mt-6 flex items-center justify-center space-x-4">
+          {/* Previous Button */}
+          <button
+            onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
+            // 前のページがない or データ取得中は disabled
+            disabled={!pagination._links.previous || isFetching}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Previous
+          </button>
+
+          {/* Page Info (例) */}
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            {`Showing ${offset + 1} - ${Math.min(pagination.totalItems, offset + ITEMS_PER_PAGE)} of ${pagination.totalItems}`}
+          </span>
+
+          {/* Next Button */}
+          <button
+            onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
+            // 次のページがない or データ取得中は disabled
+            disabled={!pagination._links.next || isFetching}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
     {/* Render Confirmation Dialog via Portal if mounted */}
     {isMounted && createPortal(

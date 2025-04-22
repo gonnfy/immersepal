@@ -1,4 +1,4 @@
-import { type Deck as PrismaDeck, type Card as PrismaCard } from '@prisma/client'; // Corrected import path
+import { type Deck as PrismaDeck, type Card as PrismaCard } from '../../node_modules/.prisma/client'; // Use relative path based on schema output
 import { type DeckCreatePayload as DeckCreatePayloadFromZod } from '@/lib/zod'; // Assuming '@/lib/zod' is the correct alias or relative path
 
 /**
@@ -16,8 +16,8 @@ export type DeckCreatePayload = DeckCreatePayloadFromZod;
  */
 export type CardApiResponse = Pick<
   PrismaCard,
-  'id' | 'front' | 'back' | 'createdAt' | 'updatedAt'
-  // Exclude 'deckId' or other internal fields if necessary
+  'id' | 'front' | 'back' | 'createdAt' | 'updatedAt' | 'deckId' | 'interval' | 'easeFactor' | 'nextReviewAt'
+  // Include fields needed by components like CardList
 >;
 
 
@@ -59,5 +59,12 @@ export interface PaginationMeta {
  */
 export interface PaginatedDecksResponse {
   data: DeckApiResponse[];
+  pagination: PaginationMeta;
+}
+/**
+ * Structure for the paginated response for cards.
+ */
+export interface PaginatedCardsResponse {
+  data: CardApiResponse[];
   pagination: PaginationMeta;
 }

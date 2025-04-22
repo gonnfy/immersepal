@@ -1,9 +1,9 @@
 // src/app/[locale]/(api)/api/decks/[deckId]/cards/route.ts (修正後の完全なコード)
 
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { z, ZodError } from 'zod'; // Import ZodError
 import { createCard, getCardsByDeckId } from '@/services/card.service';
-import { handleApiError } from '@/lib/errors';
+import { handleApiError, AppError, ERROR_CODES } from '@/lib/errors'; // Import AppError and ERROR_CODES
 import { getServerUserId } from '@/lib/auth';
 
 // Define the expected request body schema
@@ -15,13 +15,10 @@ const createCardSchema = z.object({
 // --- POST Handler (カード作成) ---
 export async function POST(
   request: Request,
-  // ★★★ 引数の受け取り方を修正 (context を使用) ★★★
-  context: { params: { deckId: string } } // Removed locale
+  context: { params: { deckId: string } }
 ) {
   try {
-    // ★★★ context.params を await してから deckId を取得 ★★★
-    const { deckId } = await context.params;
-    // const locale = context.params.locale; // locale が必要なら同様に取得
+    const { deckId } = context.params;
 
     if (!deckId) {
       return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
@@ -43,8 +40,7 @@ export async function POST(
     }
 
     // Call the service function to create the card, passing the userId
-    // ★★★ userId を createCard に渡すように修正 (card.service.ts 側も修正が必要な場合あり) ★★★
-    const newCard = await createCard(userId, { deckId, front, back }); // userId を渡す
+    const newCard = await createCard(userId, { deckId, front, back });
 
     return NextResponse.json(newCard, { status: 201 });
   } catch (error) {
@@ -56,13 +52,40 @@ export async function POST(
 // --- GET Handler (カード一覧取得) ---
 export async function GET(
   request: Request,
-  // ★★★ 引数の受け取り方を修正 (context を使用) ★★★
-  context: { params: { deckId: string } } // Removed locale
+  context: { params: { deckId: string } }
 ) {
   try {
+    // --- 4.1. クエリパラメータの読み取りと検証 ---
+    const { searchParams } = new URL(request.url);
+
+    const querySchema = z.object({
+        limit: z.coerce.number().int().min(1).max(100).default(10), // デフォルト10, 最大100
+        offset: z.coerce.number().int().min(0).default(0),       // デフォルト0
+    });
+
+    let validatedQuery: { limit: number; offset: number };
+    try {
+      validatedQuery = querySchema.parse({
+        limit: searchParams.get('limit'),
+        offset: searchParams.get('offset'),
+      });
+    } catch (err) {
+       if (err instanceof ZodError) {
+         return NextResponse.json({
+           error: ERROR_CODES.VALIDATION_ERROR,
+           message: 'Invalid query parameters for pagination.',
+           details: err.flatten().fieldErrors,
+         }, { status: 400 });
+       }
+       // Use handleApiError for other parsing errors
+       return handleApiError(new AppError('Failed to parse pagination query parameters', 400, ERROR_CODES.VALIDATION_ERROR));
+    }
+
+    // --- ここまでで limit と offset が検証済み ---
+    const { limit, offset } = validatedQuery; // Define variables *after* validation
+
     // ★★★ context.params を await してから deckId を取得 ★★★
-    const { deckId } = await context.params;
-    // const locale = context.params.locale; // locale が必要なら同様に取得
+    const { deckId } = context.params;
 
     if (!deckId) {
       return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
@@ -75,10 +98,39 @@ export async function GET(
     }
 
     // 2. Call Service Function
-    const cards = await getCardsByDeckId(userId, deckId);
+    // --- 4.2. Service 関数の呼び出し変更 ---
+    const { data: cards, totalItems } = await getCardsByDeckId(userId, deckId, { limit, offset });
 
     // 3. Success Response
-    return NextResponse.json(cards, { status: 200 });
+    // --- 4.3. ページネーションレスポンスの構築 ---
+    const baseUrl = `/api/decks/${deckId}/cards`;
+    const selfLink = `${baseUrl}?offset=${offset}&limit=${limit}`;
+    let nextLink: string | null = null;
+    if (offset + limit < totalItems) {
+      nextLink = `${baseUrl}?offset=${offset + limit}&limit=${limit}`;
+    }
+    let previousLink: string | null = null;
+    if (offset > 0) {
+      const prevOffset = Math.max(0, offset - limit);
+      previousLink = `${baseUrl}?offset=${prevOffset}&limit=${limit}`;
+    }
+
+    const responseBody = {
+      data: cards,
+      pagination: {
+        offset: offset,
+        limit: limit,
+        totalItems: totalItems,
+        _links: {
+          self: selfLink,
+          next: nextLink,
+          previous: previousLink,
+        },
+      },
+    };
+
+    // --- 4.4. レスポンスの返却変更 ---
+    return NextResponse.json(responseBody, { status: 200 });
 
   } catch (error) {
     // 4. Error Handling
