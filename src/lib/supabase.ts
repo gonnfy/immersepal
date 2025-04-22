@@ -107,7 +107,6 @@ export const createAdminClient = () => {
                 detectSessionInUrl: false,
             },
             cookies: {
-                // ★★★ Removed disable comment ★★★
                 get(_name: string) { return undefined; },
                 set(_name: string, _value: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
                 remove(_name: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
