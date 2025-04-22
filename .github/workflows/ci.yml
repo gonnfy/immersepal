@@ -1,0 +1,47 @@
+# .github/workflows/ci.yml (Bun を使うように更新)
+name: CI Checks (Bun) # 名前を少し変更 (任意)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-lint:
+    name: Build and Lint (Bun) # ジョブ名も変更 (任意)
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: リポジトリのコードをチェックアウト (変更なし)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Bun 環境をセットアップ (★変更点★)
+      - name: Set up Bun
+        # Node.js の代わりに Bun の公式 setup アクションを使用
+        uses: oven-sh/setup-bun@v1
+        # with:
+        #   bun-version: latest # バージョン指定も可能 (通常は最新でOK)
+
+      # Step 3: 依存関係をインストール (★変更点★)
+      - name: Install dependencies
+        # npm ci の代わりに bun install --frozen-lockfile を使用
+        # --frozen-lockfile は bun.lockb に基づいて厳密にインストールするオプション (npm ci 相当)
+        run: bun install --frozen-lockfile
+
+      # Step 4: ESLint を実行 (★変更点★)
+      - name: Run ESLint
+        # npm run の代わりに bun run を使用
+        run: bun run lint
+
+      # Step 5: Next.js アプリケーションをビルド (★変更点★)
+      - name: Run Next.js Build
+        # npm run の代わりに bun run を使用
+        run: bun run build
+        # ビルドに必要な環境変数はそのまま (通常 bun run でも解釈される)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL="https://ieepmqfqnkncjnzwtgpy.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZXBtcWZxbmtuY2puend0Z3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMxNTU3NDQsImV4cCI6MjA1ODczMTc0NH0.WLBEHFUl2GyhDH249Q2xWvwBeG8HfYWeUWcJeGrtaE8"
+          # 他に必要な NEXT_PUBLIC_ 変数があれば追加
