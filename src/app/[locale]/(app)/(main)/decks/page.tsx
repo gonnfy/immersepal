@@ -1,11 +1,13 @@
 // src/app/[locale]/(app)/(main)/decks/page.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // ★ Add useEffect
+import { createPortal } from 'react-dom'; // ★ Add createPortal
 // import { useParams } from 'next/navigation'; // ★ Removed unused import
 import { useDecks } from '@/hooks/useDecks';
 import { useDeleteDeck } from '@/hooks/useDeckMutations';
 import { DeckCreateForm } from '@/components/features/DeckCreateForm';
+import { DeckEditModal } from '@/components/features/DeckEditModal'; // ★ Add DeckEditModal import
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { type DeckApiResponse } from '@/types'; // Import types
 import Link from 'next/link';
@@ -28,6 +30,18 @@ function DecksPage() {
   const [deckToDelete, setDeckToDelete] = useState<DeckApiResponse | null>(null);
   // const params = useParams(); // ★ Removed unused variable
 
+  // ★★★ Add state for edit modal ★★★
+  const [editingDeck, setEditingDeck] = useState<DeckApiResponse | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false); // For Portal
+  // ★★★★★★★★★★★★★★★★★★★★★★★
+
+  // ★ Add useEffect for Portal mount ★
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  // ★★★★★★★★★★★★★★★★★★★★★★★
+
   const handleDeleteClick = (deck: DeckApiResponse) => {
     setDeckToDelete(deck);
     setIsConfirmOpen(true);
@@ -40,6 +54,13 @@ function DecksPage() {
       setDeckToDelete(null);
     }
   };
+
+  // ★★★ Add handleEditClick function ★★★
+  const handleEditClick = (deck: DeckApiResponse) => {
+    setEditingDeck(deck);
+    setIsEditModalOpen(true);
+  };
+  // ★★★★★★★★★★★★★★★★★★★★★★★
 
   const Spinner = () => <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>;
 
@@ -80,7 +101,14 @@ function DecksPage() {
                      </Link>
                      <div className="space-x-2">
                        <Link href={`/decks/${deck.id}`} className="text-blue-500 hover:underline text-sm">View</Link>
-                       <button className="text-yellow-500 hover:underline text-sm disabled:opacity-50" disabled>Edit</button>
+                       <button
+                         // ★ Remove disabled, add onClick ★
+                         className="text-yellow-500 hover:underline text-sm disabled:opacity-50"
+                         onClick={() => handleEditClick(deck)}
+                         // disabled // ★ Removed ★
+                       >
+                         Edit
+                       </button>
                        <button
                          className="text-red-500 hover:underline text-sm disabled:opacity-50"
                          onClick={() => handleDeleteClick(deck)}
@@ -147,6 +175,22 @@ function DecksPage() {
             Error deleting deck: {deleteDeckError.message}
           </div>
       )}
+      {/* ★★★ Add DeckEditModal rendering ★★★ */}
+      {isMounted && editingDeck && createPortal(
+        <DeckEditModal
+          isOpen={isEditModalOpen}
+          onOpenChange={setIsEditModalOpen} // Pass setter to allow modal to close itself
+          deck={editingDeck} // Pass the deck data to edit
+          onSuccess={() => {
+            setIsEditModalOpen(false); // Close modal on success
+            setEditingDeck(null);     // Clear editing state
+            console.log('Deck update successful, modal closed.');
+            // Optional: Add success toast/message here
+          }}
+        />,
+        document.body // Render directly into body
+      )}
+      {/* ★★★★★★★★★★★★★★★★★★★★★★★★★ */}
     </div>
   );
 }

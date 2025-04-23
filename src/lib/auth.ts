@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { createSupabaseServerActionClient } from '@/lib/supabase' // Use the server-side client creator
+import { createSupabaseServerComponentClient } from '@/lib/supabase' // Use the server-side client creator
 import { User } from '@supabase/supabase-js'
 import { AuthError } from '@supabase/supabase-js' // Import AuthError type
 
@@ -24,8 +24,7 @@ export const getServerUser = async (): Promise<ServerUserResult> => {
     const resolvedCookieStore = await cookies() // Await the promise
 
     // 2. Create Supabase client for server actions/components
-    const supabase = createSupabaseServerActionClient(() => resolvedCookieStore) // Pass a sync function returning the resolved store
-
+    const supabase = createSupabaseServerComponentClient(resolvedCookieStore);
     // 3. Get user session
     const { data: { user }, error } = await supabase.auth.getUser()
 

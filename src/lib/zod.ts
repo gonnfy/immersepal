@@ -56,3 +56,21 @@ export const cardUpdateSchema = z.object({
 
 // スキーマから TypeScript 型を生成してエクスポート
 export type CardUpdatePayload = z.infer<typeof cardUpdateSchema>;
+// --- デッキ更新用スキーマ ---
+export const deckUpdateSchema = z.object({
+  name: z.string()
+    .min(1, { message: 'Deck name cannot be empty if provided.' })
+    .max(100, { message: 'Deck name must be 100 characters or less.' })
+    .optional(),
+  description: z.string()
+    .max(500, { message: 'Description must be 500 characters or less.' })
+    .nullable() // Allow null for clearing description
+    .optional(),
+}).refine(data => data.name !== undefined || data.description !== undefined, {
+  message: "At least one field (name or description) must be provided for update.",
+  // Zod 3.23+ では refine の第二引数で path を指定可能
+  // path: ["name", "description"], // 関連フィールドを指定
+});
+
+// スキーマから TypeScript 型を生成してエクスポート
+export type DeckUpdatePayload = z.infer<typeof deckUpdateSchema>;

@@ -1,11 +1,17 @@
 import { type Deck as PrismaDeck, type Card as PrismaCard } from '../../node_modules/.prisma/client'; // Use relative path based on schema output
-import { type DeckCreatePayload as DeckCreatePayloadFromZod } from '@/lib/zod'; // Assuming '@/lib/zod' is the correct alias or relative path
+import { type DeckCreatePayload as DeckCreatePayloadFromZod, type DeckUpdatePayload as DeckUpdatePayloadFromZod } from '@/lib/zod'; // Assuming '@/lib/zod' is the correct alias or relative path
 
 /**
  * Payload for creating a new deck (POST /api/decks).
  * Re-exported from the Zod schema definition.
  */
 export type DeckCreatePayload = DeckCreatePayloadFromZod;
+
+/**
+ * Payload for updating an existing deck (PUT /api/decks/{deckId}).
+ * Re-exported from the Zod schema definition.
+ */
+export type DeckUpdatePayload = DeckUpdatePayloadFromZod;
 
 /**
  * Structure of a deck object returned by the API (GET /api/decks, POST /api/decks success).
