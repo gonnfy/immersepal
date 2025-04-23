@@ -3,6 +3,9 @@ import { getServerUserId } from '@/lib/auth'; // Adjusted import path
 import { deleteDeck, getDeckById } from '@/services/deck.service'; // Adjusted import path - Added getDeckById
 import { isAppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Adjusted import path
 import { ApiErrorResponse } from '@/types/api.types'; // Added import for error response type
+import { deckUpdateSchema, DeckUpdatePayload } from '@/lib/zod'; // Adjusted import path
+import { updateDeck } from '@/services/deck.service'; // Adjusted import path
+import { ERROR_CODES, handleApiError } from '@/lib/errors'; // Adjusted import path
 
 // GET handler to retrieve a specific deck by ID
 export async function GET(
@@ -106,5 +109,71 @@ export async function DELETE(
     // Handle unexpected errors
     const errorResponse: ApiErrorResponse = { error: 'INTERNAL_SERVER_ERROR', message: 'An unexpected internal server error occurred.' }; // Updated message
     return NextResponse.json(errorResponse, { status: 500 });
+  }
+}
+
+
+// --- PUT ハンドラ (Result パターン対応) ---
+export async function PUT(
+  request: Request,
+  context: { params: { deckId: string } }
+) {
+  try { // ★ ボディパースや Zod パースでの throw をキャッチする外側の try ★
+    // 1. Authentication
+    const userId = await getServerUserId();
+    if (!userId) {
+      // Use ERROR_CODES for consistency
+      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
+    }
+
+    // 2. Extract deckId
+    const { deckId } = await context.params; // Await params as it's async now
+    if (!deckId) {
+        // Use ERROR_CODES
+        return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId in URL.' }, { status: 400 });
+    }
+
+    // 3. Get and Parse Request Body
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch (_e) {
+      // Use ERROR_CODES
+      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
+    }
+
+    // 4. Input Validation (Zod) - safeParse を使用
+    const validation = deckUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: ERROR_CODES.VALIDATION_ERROR,
+          message: 'Invalid input data for update.',
+          // Provide flattened errors for better client-side handling
+          details: validation.error.flatten().fieldErrors,
+        },
+        { status: 400 }
+      );
+    }
+    // Type assertion is safe here due to the success check
+    const validatedData = validation.data as DeckUpdatePayload;
+
+    // 5. Service Call (try...catch は不要 for AppErrors handled by Result)
+    const result = await updateDeck(userId, deckId, validatedData);
+
+    // 6. Handle Result
+    if (result.ok) {
+      // Success Response
+      return NextResponse.json(result.value, { status: 200 });
+    } else {
+      // Error Handling using centralized handler
+      // result.error is guaranteed to be AppError based on updateDeck signature
+      return handleApiError(result.error);
+    }
+
+  } catch (error) {
+     // Catch unexpected errors (e.g., network issues, runtime errors outside service call)
+     // Pass the caught error to the centralized handler
+     return handleApiError(error);
   }
 }

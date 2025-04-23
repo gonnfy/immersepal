@@ -85,7 +85,7 @@ export async function GET(
     const { limit, offset } = validatedQuery; // Define variables *after* validation
 
     // ★★★ context.params を await してから deckId を取得 ★★★
-    const { deckId } = context.params;
+    const { deckId } = await context.params;
 
     if (!deckId) {
       return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
