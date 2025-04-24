@@ -46,6 +46,8 @@ app/
             route.ts
           route.ts
         route.ts
+      test-tts/
+        route.ts
   [locale]/
     (app)/
       (auth)/
@@ -72,6 +74,7 @@ components/
     CardList.tsx
     DeckCreateForm.tsx
     DeckCreateModal.tsx
+    DeckEditModal.tsx
   providers/
     AuthProvider.tsx
   ui/
@@ -94,6 +97,7 @@ lib/
   supabase.ts
   zod.ts
 services/
+  ai.service.ts
   card.service.ts
   deck.service.ts
 types/
@@ -186,8 +190,7 @@ export async function PUT(
   let body: unknown;
   try {
     body = await request.json();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (_e) { // _e は使わないが、catch 節は必要
+  } catch (_e) { // _e は使わないが、catch 節は必要 (Removed unused eslint-disable comment)
     return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
   }
 
@@ -224,9 +227,9 @@ export async function PUT(
 // src/app/[locale]/(api)/api/decks/[deckId]/cards/route.ts (修正後の完全なコード)
 
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { z, ZodError } from 'zod'; // Import ZodError
 import { createCard, getCardsByDeckId } from '@/services/card.service';
-import { handleApiError } from '@/lib/errors';
+import { handleApiError, AppError, ERROR_CODES } from '@/lib/errors'; // Import AppError and ERROR_CODES
 import { getServerUserId } from '@/lib/auth';
 
 // Define the expected request body schema
@@ -238,13 +241,10 @@ const createCardSchema = z.object({
 // --- POST Handler (カード作成) ---
 export async function POST(
   request: Request,
-  // ★★★ 引数の受け取り方を修正 (context を使用) ★★★
-  context: { params: { deckId: string } } // Removed locale
+  context: { params: { deckId: string } }
 ) {
   try {
-    // ★★★ context.params を await してから deckId を取得 ★★★
-    const { deckId } = await context.params;
-    // const locale = context.params.locale; // locale が必要なら同様に取得
+    const { deckId } = context.params;
 
     if (!deckId) {
       return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
@@ -266,8 +266,7 @@ export async function POST(
     }
 
     // Call the service function to create the card, passing the userId
-    // ★★★ userId を createCard に渡すように修正 (card.service.ts 側も修正が必要な場合あり) ★★★
-    const newCard = await createCard(userId, { deckId, front, back }); // userId を渡す
+    const newCard = await createCard(userId, { deckId, front, back });
 
     return NextResponse.json(newCard, { status: 201 });
   } catch (error) {
@@ -279,13 +278,40 @@ export async function POST(
 // --- GET Handler (カード一覧取得) ---
 export async function GET(
   request: Request,
-  // ★★★ 引数の受け取り方を修正 (context を使用) ★★★
-  context: { params: { deckId: string } } // Removed locale
+  context: { params: { deckId: string } }
 ) {
   try {
+    // --- 4.1. クエリパラメータの読み取りと検証 ---
+    const { searchParams } = new URL(request.url);
+
+    const querySchema = z.object({
+        limit: z.coerce.number().int().min(1).max(100).default(10), // デフォルト10, 最大100
+        offset: z.coerce.number().int().min(0).default(0),       // デフォルト0
+    });
+
+    let validatedQuery: { limit: number; offset: number };
+    try {
+      validatedQuery = querySchema.parse({
+        limit: searchParams.get('limit'),
+        offset: searchParams.get('offset'),
+      });
+    } catch (err) {
+       if (err instanceof ZodError) {
+         return NextResponse.json({
+           error: ERROR_CODES.VALIDATION_ERROR,
+           message: 'Invalid query parameters for pagination.',
+           details: err.flatten().fieldErrors,
+         }, { status: 400 });
+       }
+       // Use handleApiError for other parsing errors
+       return handleApiError(new AppError('Failed to parse pagination query parameters', 400, ERROR_CODES.VALIDATION_ERROR));
+    }
+
+    // --- ここまでで limit と offset が検証済み ---
+    const { limit, offset } = validatedQuery; // Define variables *after* validation
+
     // ★★★ context.params を await してから deckId を取得 ★★★
     const { deckId } = await context.params;
-    // const locale = context.params.locale; // locale が必要なら同様に取得
 
     if (!deckId) {
       return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
@@ -298,10 +324,39 @@ export async function GET(
     }
 
     // 2. Call Service Function
-    const cards = await getCardsByDeckId(userId, deckId);
+    // --- 4.2. Service 関数の呼び出し変更 ---
+    const { data: cards, totalItems } = await getCardsByDeckId(userId, deckId, { limit, offset });
 
     // 3. Success Response
-    return NextResponse.json(cards, { status: 200 });
+    // --- 4.3. ページネーションレスポンスの構築 ---
+    const baseUrl = `/api/decks/${deckId}/cards`;
+    const selfLink = `${baseUrl}?offset=${offset}&limit=${limit}`;
+    let nextLink: string | null = null;
+    if (offset + limit < totalItems) {
+      nextLink = `${baseUrl}?offset=${offset + limit}&limit=${limit}`;
+    }
+    let previousLink: string | null = null;
+    if (offset > 0) {
+      const prevOffset = Math.max(0, offset - limit);
+      previousLink = `${baseUrl}?offset=${prevOffset}&limit=${limit}`;
+    }
+
+    const responseBody = {
+      data: cards,
+      pagination: {
+        offset: offset,
+        limit: limit,
+        totalItems: totalItems,
+        _links: {
+          self: selfLink,
+          next: nextLink,
+          previous: previousLink,
+        },
+      },
+    };
+
+    // --- 4.4. レスポンスの返却変更 ---
+    return NextResponse.json(responseBody, { status: 200 });
 
   } catch (error) {
     // 4. Error Handling
@@ -317,6 +372,9 @@ import { getServerUserId } from '@/lib/auth'; // Adjusted import path
 import { deleteDeck, getDeckById } from '@/services/deck.service'; // Adjusted import path - Added getDeckById
 import { isAppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Adjusted import path
 import { ApiErrorResponse } from '@/types/api.types'; // Added import for error response type
+import { deckUpdateSchema, DeckUpdatePayload } from '@/lib/zod'; // Adjusted import path
+import { updateDeck } from '@/services/deck.service'; // Adjusted import path
+import { ERROR_CODES, handleApiError } from '@/lib/errors'; // Adjusted import path
 
 // GET handler to retrieve a specific deck by ID
 export async function GET(
@@ -422,19 +480,85 @@ export async function DELETE(
     return NextResponse.json(errorResponse, { status: 500 });
   }
 }
+
+
+// --- PUT ハンドラ (Result パターン対応) ---
+export async function PUT(
+  request: Request,
+  context: { params: { deckId: string } }
+) {
+  try { // ★ ボディパースや Zod パースでの throw をキャッチする外側の try ★
+    // 1. Authentication
+    const userId = await getServerUserId();
+    if (!userId) {
+      // Use ERROR_CODES for consistency
+      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
+    }
+
+    // 2. Extract deckId
+    const { deckId } = await context.params; // Await params as it's async now
+    if (!deckId) {
+        // Use ERROR_CODES
+        return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId in URL.' }, { status: 400 });
+    }
+
+    // 3. Get and Parse Request Body
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch (_e) {
+      // Use ERROR_CODES
+      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
+    }
+
+    // 4. Input Validation (Zod) - safeParse を使用
+    const validation = deckUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: ERROR_CODES.VALIDATION_ERROR,
+          message: 'Invalid input data for update.',
+          // Provide flattened errors for better client-side handling
+          details: validation.error.flatten().fieldErrors,
+        },
+        { status: 400 }
+      );
+    }
+    // Type assertion is safe here due to the success check
+    const validatedData = validation.data as DeckUpdatePayload;
+
+    // 5. Service Call (try...catch は不要 for AppErrors handled by Result)
+    const result = await updateDeck(userId, deckId, validatedData);
+
+    // 6. Handle Result
+    if (result.ok) {
+      // Success Response
+      return NextResponse.json(result.value, { status: 200 });
+    } else {
+      // Error Handling using centralized handler
+      // result.error is guaranteed to be AppError based on updateDeck signature
+      return handleApiError(result.error);
+    }
+
+  } catch (error) {
+     // Catch unexpected errors (e.g., network issues, runtime errors outside service call)
+     // Pass the caught error to the centralized handler
+     return handleApiError(error);
+  }
+}
 ```
 
 ## File: app/(api)/api/decks/route.ts
 ```typescript
-// src/app/(api)/api/decks/route.ts (ページネーション対応済みの想定)
+// src/app/(api)/api/decks/route.ts (isAppError, ValidationError 削除)
 
 import { NextResponse } from 'next/server';
 import { getServerUserId } from '@/lib/auth';
 import { deckCreateSchema, DeckCreatePayload } from '@/lib/zod';
 import { createDeck, getAllDecks } from '@/services/deck.service';
-// AppError, ValidationError は handleApiError 等で必要になる可能性を考慮し残置
-import { AppError, isAppError, ValidationError, handleApiError, ERROR_CODES } from '@/lib/errors';
-import { z, ZodError } from 'zod'; // z をインポート
+// ★ isAppError, ValidationError を削除 ★ AppError は handleApiError で暗黙的に使われる可能性を考慮し一旦残す
+import { AppError, handleApiError, ERROR_CODES } from '@/lib/errors';
+import { z, ZodError } from 'zod';
 
 /**
  * 新しいデッキを作成する (POST)
@@ -449,8 +573,7 @@ export async function POST(request: Request) {
     let body: DeckCreatePayload;
     try {
       body = await request.json();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (_e) { // ★★★ コメント追加 ★★★
+    } catch (_e) { // Removed unused eslint-disable comment
       return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON format.' }, { status: 400 });
     }
 
@@ -501,7 +624,7 @@ export async function GET(request: Request) {
            details: err.flatten().fieldErrors,
          }, { status: 400 });
        }
-       // AppError をインポートしているので new を使う
+       // ★ AppError はここで new しているのでインポートが必要 ★
        return handleApiError(new AppError('Failed to parse query parameters', 400, ERROR_CODES.VALIDATION_ERROR));
     }
 
@@ -543,15 +666,45 @@ export async function GET(request: Request) {
 }
 ```
 
+## File: app/(api)/api/test-tts/route.ts
+```typescript
+// src/app/(api)/api/test-tts/route.ts
+import { NextResponse } from 'next/server';
+import { generateTtsAudio } from '@/services/ai.service'; // 作成した関数をインポート
+import { v4 as uuidv4 } from 'uuid'; // ユニークなファイル名生成用 (必要なら bun add uuid @types/uuid)
+
+export async function GET(request: Request) {
+  try {
+    const testText = "こんにちは、これは音声合成のテストです。"; // 音声にしたいテキスト
+    // GCS 上でファイル名が重複しないように UUID やタイムスタンプを使う
+    const testFilename = `test-audio-${uuidv4()}`; // 例: test-audio-xxxxxxxx-xxxx...
+
+    console.log(`[Test API] Calling generateTtsAudio with text: "${testText}"`);
+    const audioUrl = await generateTtsAudio(testText, testFilename);
+
+    if (audioUrl) {
+      console.log(`[Test API] Success! Audio URL: ${audioUrl}`);
+      return NextResponse.json({ success: true, url: audioUrl, message: 'TTS generated and uploaded successfully.' });
+    } else {
+      console.error('[Test API] Failed to generate audio URL.');
+      return NextResponse.json({ success: false, error: 'Failed to generate TTS audio URL.' }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('[Test API] Error occurred:', error);
+    return NextResponse.json({ success: false, error: 'An unexpected error occurred during TTS test.' }, { status: 500 });
+  }
+}
+```
+
 ## File: app/[locale]/(app)/(auth)/login/page.tsx
 ```typescript
+// src/app/[locale]/(app)/(auth)/login/page.tsx
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-// Import useAuth hook
 import { useAuth } from '@/hooks/useAuth';
-import { Link } from '@/i18n/navigation'; // '@/' は src/ へのエイリアスと仮定
+import { Link } from '@/i18n/navigation';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -559,29 +712,27 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-  const { signIn } = useAuth(); // Use the hook
+  const { signIn } = useAuth();
+  const [message, setMessage] = useState<string | null>(null)
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setMessage(null)
 
-    // Call the actual Supabase function via the hook
-    const { error: signInError } = await signIn(email, password); // Pass email, password
+    const { error: signInError } = await signIn(email, password);
 
     if (signInError) {
       setError(signInError.message)
       setLoading(false)
     } else {
-      // Success! Redirect to dashboard.
-      setMessage('Login successful! Redirecting...') // Optional message
-      router.push('/dashboard') // Redirect to dashboard or desired page
-      // No need to setLoading(false) here as we are navigating away
+      setMessage('Login successful! Redirecting...')
+      // Redirect to the main decks page after login
+      router.push('/decks')
     }
   }
 
-  // Added state for success message (optional)
-  const [message, setMessage] = useState<string | null>(null)
 
   return (
     <div style={{ maxWidth: '400px', margin: 'auto', paddingTop: '50px' }}>
@@ -619,12 +770,12 @@ export default function LoginPage() {
       </form>
       {error && <p style={{ color: 'red', marginTop: '10px' }}>Error: {error}</p>}
       {message && <p style={{ color: 'green', marginTop: '10px' }}>{message}</p>}
-      {/* Optional: Links */}
       <p style={{ marginTop: '20px' }}>
-        Don't have an account? <Link href="/signup">Sign Up</Link>
+        {/* ★★★ Fixed ' error ★★★ */}
+        Don&apos;t have an account? <Link href="/signup">Sign Up</Link>
       </p>
       {/* <p style={{ marginTop: '10px' }}>
-        <a href="/forgot-password">Forgot Password?</a>
+        <Link href="/forgot-password">Forgot Password?</Link>
       </p> */}
     </div>
   )
@@ -633,13 +784,13 @@ export default function LoginPage() {
 
 ## File: app/[locale]/(app)/(auth)/signup/page.tsx
 ```typescript
+// src/app/[locale]/(app)/(auth)/signup/page.tsx
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-// Import useAuth hook
+// import { useRouter } from 'next/navigation' // ★ Removed unused import
 import { useAuth } from '@/hooks/useAuth';
-import { Link } from '@/i18n/navigation'; // '@/' は src/ へのエイリアスと仮定
+import { Link } from '@/i18n/navigation';
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('')
@@ -647,7 +798,8 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const { signUp } = useAuth(); // Use the hook
+  // const router = useRouter() // ★ Removed unused variable
+  const { signUp } = useAuth();
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -655,20 +807,12 @@ export default function SignUpPage() {
     setError(null)
     setMessage(null)
 
-    // Call the actual Supabase function via the hook
-    // Pass credentials as an object as required by our updated hook
-    const { error: signUpError } = await signUp(email, password); // Corrected: pass email, password directly as per latest hook definition
+    const { error: signUpError } = await signUp(email, password);
 
     if (signUpError) {
       setError(signUpError.message)
     } else {
-      // Success! Show message or redirect.
-      // Check Supabase project settings for email verification requirements.
       setMessage('Sign up successful! Please check your email for verification.')
-      // Optionally redirect after a delay or immediately:
-      // setTimeout(() => router.push('/login'), 3000);
-      // Or if email verification is off/not required for login:
-      // router.push('/dashboard');
     }
 
     setLoading(false)
@@ -678,29 +822,29 @@ export default function SignUpPage() {
     <div style={{ maxWidth: '400px', margin: 'auto', paddingTop: '50px' }}>
       <h2>Sign Up</h2>
       <form onSubmit={handleSignUp}>
-        <div>
-          <label htmlFor="email">Email:</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
-          />
-        </div>
-        <div>
-          <label htmlFor="password">Password:</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6} // Example: Enforce minimum password length
-            style={{ width: '100%', padding: '8px', marginBottom: '20px' }}
-          />
-        </div>
+         <div>
+           <label htmlFor="email">Email:</label>
+           <input
+             id="email"
+             type="email"
+             value={email}
+             onChange={(e) => setEmail(e.target.value)}
+             required
+             style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
+           />
+         </div>
+         <div>
+           <label htmlFor="password">Password:</label>
+           <input
+             id="password"
+             type="password"
+             value={password}
+             onChange={(e) => setPassword(e.target.value)}
+             required
+             minLength={6}
+             style={{ width: '100%', padding: '8px', marginBottom: '20px' }}
+           />
+         </div>
         <button
           type="submit"
           disabled={loading}
@@ -711,10 +855,9 @@ export default function SignUpPage() {
       </form>
       {error && <p style={{ color: 'red', marginTop: '10px' }}>Error: {error}</p>}
       {message && <p style={{ color: 'green', marginTop: '10px' }}>{message}</p>}
-       {/* Optional: Link to Login */}
-       <p style={{ marginTop: '20px' }}>
-         Already have an account? <Link href="/login">Log In</Link>
-       </p>
+      <p style={{ marginTop: '20px' }}>
+        Already have an account? <Link href="/login">Log In</Link>
+      </p>
     </div>
   )
 }
@@ -830,27 +973,28 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
 
 ## File: app/[locale]/(app)/(main)/decks/page.tsx
 ```typescript
-// src/app/[locale]/(app)/(main)/decks/page.tsx (正しいコード)
+// src/app/[locale]/(app)/(main)/decks/page.tsx
 'use client';
 
-import React, { useState } from 'react';
-import { useParams } from 'next/navigation'; // useParams をインポート
+import React, { useState, useEffect } from 'react'; // ★ Add useEffect
+import { createPortal } from 'react-dom'; // ★ Add createPortal
+// import { useParams } from 'next/navigation'; // ★ Removed unused import
 import { useDecks } from '@/hooks/useDecks';
-// useCreateDeck はフォームで使うのでここでは不要かも
-import { useDeleteDeck } from '@/hooks/useDeckMutations'; // 削除フックをインポート
+import { useDeleteDeck } from '@/hooks/useDeckMutations';
 import { DeckCreateForm } from '@/components/features/DeckCreateForm';
-import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'; // 確認ダイアログをインポート
-import { type DeckApiResponse } from '@/types';
-import Link from 'next/link'; // ★ Linkをインポート (詳細表示用) ★
-import { useAuth } from '@/hooks/useAuth'; // ★ useAuth をインポート (ログイン状態確認用) ★
+import { DeckEditModal } from '@/components/features/DeckEditModal'; // ★ Add DeckEditModal import
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { type DeckApiResponse } from '@/types'; // Import types
+import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 function DecksPage() {
-  const { isLoading: authLoading } = useAuth(); // 認証状態を取得
-  const ITEMS_PER_PAGE = 10; // 1ページあたりの表示件数 (定数として定義)
-  const [offset, setOffset] = useState(0); // 現在のオフセット (初期値 0)
+  const { isLoading: authLoading } = useAuth();
 
-  // 更新された useDecks フックの呼び出し (修正: data ネストを削除)
-  const { decks, pagination, isLoading, isFetching, error } = useDecks({
+  const ITEMS_PER_PAGE = 10;
+  const [offset, setOffset] = useState(0);
+
+  const { decks, pagination, isLoading: decksIsLoading, isFetching: decksIsFetching, error: decksError } = useDecks({
     offset: offset,
     limit: ITEMS_PER_PAGE,
   });
@@ -859,7 +1003,19 @@ function DecksPage() {
 
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [deckToDelete, setDeckToDelete] = useState<DeckApiResponse | null>(null);
-  const params = useParams();
+  // const params = useParams(); // ★ Removed unused variable
+
+  // ★★★ Add state for edit modal ★★★
+  const [editingDeck, setEditingDeck] = useState<DeckApiResponse | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false); // For Portal
+  // ★★★★★★★★★★★★★★★★★★★★★★★
+
+  // ★ Add useEffect for Portal mount ★
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  // ★★★★★★★★★★★★★★★★★★★★★★★
 
   const handleDeleteClick = (deck: DeckApiResponse) => {
     setDeckToDelete(deck);
@@ -874,18 +1030,20 @@ function DecksPage() {
     }
   };
 
-  // スピナーコンポーネント定義 (簡易版)
+  // ★★★ Add handleEditClick function ★★★
+  const handleEditClick = (deck: DeckApiResponse) => {
+    setEditingDeck(deck);
+    setIsEditModalOpen(true);
+  };
+  // ★★★★★★★★★★★★★★★★★★★★★★★
+
   const Spinner = () => <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>;
 
-  // 認証状態のローディング中は何も表示しないか、ローディング表示
-  if (authLoading) {
-    return <div className="flex justify-center items-center h-screen"><Spinner /></div>;
-  }
+  const isLoading = authLoading || decksIsLoading;
 
-  // 未認証の場合はログインを促すなど (必要に応じて)
-  // if (!authUser) {
-  //   return <div>Please log in to view your decks.</div>;
-  // }
+  if (isLoading && !pagination) {
+      return <div className="flex justify-center items-center h-screen"><Spinner /></div>;
+  }
 
   return (
     <div className="container mx-auto p-4">
@@ -897,131 +1055,140 @@ function DecksPage() {
       </div>
 
       <h2 className="text-2xl font-semibold mb-4">Existing Decks</h2>
-      {/* ローディング表示 (isFetching を使うとバックグラウンド更新中もわかる) */}
-      {(isLoading || isFetching) && !error && (
-           <div className="flex justify-center items-center mt-4">
-               <Spinner />
-               <span className="ml-2">Loading...</span>
-           </div>
-      )}
-      {/* エラー表示 */}
-      {error && (
-          <div className="text-red-600 mt-4 bg-red-100 border border-red-400 p-4 rounded">
-              Error loading decks: {error.message}
-          </div>
-      )}
-      {/* データ表示 */}
-      {!isLoading && !error && decks && (
-        <>
-          {decks.length === 0 && !isFetching && ( // フェッチ中でなければ表示
-            <p>You haven't created any decks yet.</p>
-          )}
-          {decks.length > 0 && (
-            <ul className="space-y-3">
-              {/* 修正: deck の型を追加 */}
-              {decks.map((deck: DeckApiResponse) => (
-                <li key={deck.id} className="p-4 border rounded-md shadow-sm bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700">
-                  <div className="flex justify-between items-center">
-                    <Link href={`/decks/${deck.id}`} className="text-lg font-medium hover:underline">
-                      {deck.name}
-                    </Link>
-                    <div className="space-x-2">
-                      <Link href={`/decks/${deck.id}`} className="text-blue-500 hover:underline text-sm">View</Link>
-                      <button className="text-yellow-500 hover:underline text-sm disabled:opacity-50" disabled>Edit</button>
-                      <button
-                        className="text-red-500 hover:underline text-sm disabled:opacity-50"
-                        onClick={() => handleDeleteClick(deck)}
-                        disabled={isDeletingDeck || isFetching} // データ取得中も無効化
-                      >
-                        {isDeletingDeck && deckToDelete?.id === deck.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
-                  </div>
-                  {deck.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{deck.description}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-
-      {/* ページネーションコントロール */}
-      {!isLoading && !error && pagination && pagination.totalItems > 0 && (
-        <div className="mt-6 flex items-center justify-center space-x-4">
-          {/* Previous Button */}
-          <button
-            onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
-            disabled={!pagination._links.previous || isFetching} // 前のページがないか、データ取得中は無効
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            Previous
-          </button>
-
-          {/* Page Info */}
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            {`Showing ${offset + 1} - ${Math.min(pagination.totalItems, offset + ITEMS_PER_PAGE)} of ${pagination.totalItems}`}
-          </span>
-
-          {/* Next Button */}
-          <button
-            onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
-            disabled={!pagination._links.next || isFetching} // 次のページがないか、データ取得中は無効
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            Next
-          </button>
+      {!decksIsLoading && decksError && (
+        <div className="text-red-600 bg-red-100 border border-red-400 p-4 rounded mb-4">
+          <p>Error loading decks:</p>
+          <pre>{decksError instanceof Error ? decksError.message : JSON.stringify(decksError)}</pre>
         </div>
       )}
+      {!isLoading && !decksError && decks && ( // Ensure decks is also checked
+         <>
+           {decks.length === 0 && offset === 0 && !decksIsFetching && ( // Check offset and fetching
+             <p>You haven&apos;t created any decks yet.</p> // ★★★ Fixed '
+           )}
+           {decks.length > 0 && (
+             <ul className="space-y-3 mb-6">
+               {decks.map((deck: DeckApiResponse) => ( // Added type for deck
+                 <li key={deck.id} className="p-4 border rounded-md shadow-sm bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700">
+                   <div className="flex justify-between items-center">
+                     <Link href={`/decks/${deck.id}`} className="text-lg font-medium hover:underline">
+                       {deck.name}
+                     </Link>
+                     <div className="space-x-2">
+                       <Link href={`/decks/${deck.id}`} className="text-blue-500 hover:underline text-sm">View</Link>
+                       <button
+                         // ★ Remove disabled, add onClick ★
+                         className="text-yellow-500 hover:underline text-sm disabled:opacity-50"
+                         onClick={() => handleEditClick(deck)}
+                         // disabled // ★ Removed ★
+                       >
+                         Edit
+                       </button>
+                       <button
+                         className="text-red-500 hover:underline text-sm disabled:opacity-50"
+                         onClick={() => handleDeleteClick(deck)}
+                         disabled={isDeletingDeck || decksIsFetching} // Disable while fetching too
+                       >
+                         {isDeletingDeck && deckToDelete?.id === deck.id ? 'Deleting...' : 'Delete'}
+                       </button>
+                     </div>
+                   </div>
+                   {deck.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{deck.description}</p>}
+                 </li>
+               ))}
+             </ul>
+           )}
+         </>
+       )}
+        {(decksIsLoading || decksIsFetching) && !decksError && ( // Loading/Fetching indicator
+            <div className="flex justify-center items-center mt-4">
+                <Spinner /> <span className="ml-2">Loading decks...</span>
+            </div>
+       )}
 
-      {/* 確認ダイアログ */}
+       {/* Pagination Controls */}
+       {!isLoading && !decksError && pagination && pagination.totalItems > 0 && (
+         <div className="mt-6 flex items-center justify-center space-x-4">
+           <button
+             onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
+             disabled={!pagination._links.previous || decksIsFetching}
+             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+           >
+             Previous
+           </button>
+           <span className="text-sm text-gray-700 dark:text-gray-300">
+             {`Showing ${pagination.totalItems > 0 ? offset + 1 : 0} - ${Math.min(pagination.totalItems, offset + ITEMS_PER_PAGE)} of ${pagination.totalItems}`}
+           </span>
+           <button
+             onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
+             disabled={!pagination._links.next || decksIsFetching}
+             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+           >
+             Next
+           </button>
+         </div>
+       )}
+
+      {/* Delete Confirmation Dialog */}
       {deckToDelete && (
         <ConfirmationDialog
           isOpen={isConfirmOpen}
           onOpenChange={setIsConfirmOpen}
           onConfirm={handleConfirmDelete}
           title="Delete Deck"
-          description={`Are you sure you want to delete "${deckToDelete.name}"? This cannot be undone.`}
+          // ★★★ Ensure no unescaped ' here ★★★
+          description={`Are you sure you want to delete "${deckToDelete.name}"? This action cannot be undone.`}
           confirmText="Delete"
           cancelText="Cancel"
-          isConfirming={isDeletingDeck && deckToDelete?.id === deckToDelete.id} // 削除対象の時だけ isConfirming を true に
+          isConfirming={isDeletingDeck} // Only disable confirm button during delete op
         />
       )}
 
-      {/* 削除エラー表示 (任意) */}
+      {/* Delete Error Display */}
       {deleteDeckError && (
-         <div className="text-red-600 mt-4">
-           Error deleting deck: {deleteDeckError.message}
-         </div>
+          <div className="text-red-600 mt-4">
+            Error deleting deck: {deleteDeckError.message}
+          </div>
       )}
+      {/* ★★★ Add DeckEditModal rendering ★★★ */}
+      {isMounted && editingDeck && createPortal(
+        <DeckEditModal
+          isOpen={isEditModalOpen}
+          onOpenChange={setIsEditModalOpen} // Pass setter to allow modal to close itself
+          deck={editingDeck} // Pass the deck data to edit
+          onSuccess={() => {
+            setIsEditModalOpen(false); // Close modal on success
+            setEditingDeck(null);     // Clear editing state
+            console.log('Deck update successful, modal closed.');
+            // Optional: Add success toast/message here
+          }}
+        />,
+        document.body // Render directly into body
+      )}
+      {/* ★★★★★★★★★★★★★★★★★★★★★★★★★ */}
     </div>
   );
 }
 
-// ★★★ 必ずデフォルトエクスポートする ★★★
 export default DecksPage;
 ```
 
 ## File: app/[locale]/(app)/test/page.tsx
 ```typescript
-// src/app/[locale]/(app)/test/page.tsx (テスト用コード)
-
-'use client'; // ダイアログの状態を管理するため Client Component にする
+// src/app/[locale]/(app)/test/page.tsx
+'use client';
 
 import React, { useState } from 'react';
-// Corrected import path assuming '@/' alias points to 'src/'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 
 export default function DialogTestPage() {
-  // ダイアログの表示状態を管理する state (最初から表示させるため true に設定)
   const [isDialogOpen, setIsDialogOpen] = useState(true);
 
-  // 確認ボタンが押された時の仮の処理
   const handleConfirm = () => {
     alert('Confirmed!');
-    setIsDialogOpen(false); // 確認したら閉じる（テスト用）
+    setIsDialogOpen(false);
   };
 
-  // キャンセル時やオーバーレイクリックでダイアログを閉じる処理
   const handleOpenChange = (isOpen: boolean) => {
     setIsDialogOpen(isOpen);
   };
@@ -1036,12 +1203,10 @@ export default function DialogTestPage() {
       </p>
       <p>
         If the dialog below is still misplaced or cut off, the issue
-        might be with the dialog's internal styles, Tailwind setup,
+        might be with the dialog&apos;s internal styles, Tailwind setup, {/* ★★★ Fixed ' */}
         or global CSS conflicts.
       </p>
 
-      {/* 他の要素を置かずに ConfirmationDialog だけをレンダリング */}
-      {/* isOpen が true なので最初から表示されるはず */}
       <ConfirmationDialog
         isOpen={isDialogOpen}
         onOpenChange={handleOpenChange}
@@ -1052,7 +1217,6 @@ export default function DialogTestPage() {
         cancelText="Cancel Test"
       />
 
-      {/* ページが長い場合にスクロールが発生するようにダミーコンテンツを追加 (任意) */}
       <div style={{ height: '150vh', background: '#eee', marginTop: '20px' }}>
         Scrollable area below the dialog trigger point (dialog should stay centered).
       </div>
@@ -1278,19 +1442,19 @@ export const CardCreateForm: React.FC<CardCreateFormProps> = ({ deckId, onCardCr
 ```typescript
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { cardUpdateSchema, CardUpdatePayload } from '@/lib/zod';
-import { useUpdateCard, Card } from '@/hooks/useCardMutations'; // Assuming Card type is exported here
-import { AppError } from '@/lib/errors';
+import { useUpdateCard, Card } from '@/hooks/useCardMutations'; // Use Card type from mutations (string dates)
+import { AppError, isAppError } from '@/lib/errors';
 
 interface CardEditModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  card: Card | null;
+  card: Card | null; // Expects Card with string dates
   deckId: string;
-  onSuccess?: () => void;
+  onSuccess?: (updatedCard: Card) => void; // Callback on successful update
 }
 
 export const CardEditModal: React.FC<CardEditModalProps> = ({
@@ -1300,7 +1464,8 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
   deckId,
   onSuccess,
 }) => {
-  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<AppError | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const {
     register,
@@ -1315,155 +1480,175 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
     },
   });
 
-  // Reset form when card prop changes
-  useEffect(() => {
-    if (card) {
-      reset({
-        front: card.front,
-        back: card.back,
-      });
-      setApiError(null); // Clear previous errors when a new card is loaded
-    } else {
-      // Reset to empty if card becomes null (e.g., modal closed and reopened without a card)
-      reset({ front: '', back: '' });
+  const updateCardMutation = useUpdateCard(deckId, {
+    onSuccess: (updatedCard) => { // Remove unused variables parameter
+      console.log('Card updated successfully:', updatedCard);
       setApiError(null);
-    }
-  }, [card, reset]);
-
-  const handleSuccess = (updatedCard: Card) => {
-    console.log('Card updated successfully:', updatedCard);
-    setApiError(null);
-    onSuccess?.(); // Call external success handler if provided
-    onOpenChange(false); // Close modal on success
-  };
-
-  const handleError = (error: AppError) => {
-    console.error('Error updating card:', error);
-    setApiError(error.message || 'An unexpected error occurred.');
-    // Optionally, handle specific error codes from error.errorCode
-  };
-
-  const { mutate, isPending } = useUpdateCard(deckId, {
-    onSuccess: handleSuccess,
-    onError: handleError,
+      onSuccess?.(updatedCard); // Call the prop onSuccess
+      onOpenChange(false); // Close modal
+    },
+    onError: (error) => { // Remove unused _variables parameter
+      // Use error directly
+      console.error(`Error updating card:`, error);
+      setApiError(error);
+    },
   });
+
+  // Effect to handle modal display state and reset form
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    if (isOpen) {
+      setApiError(null); // Clear previous API errors when opening
+      if (card) {
+        // Reset form with current card data when modal opens or card changes
+        reset({ front: card.front, back: card.back });
+      } else {
+        // Reset to empty if no card is provided (should ideally not happen if opened correctly)
+        reset({ front: '', back: '' });
+      }
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    } else {
+      if (dialog.open) {
+        dialog.close();
+        // Optionally reset form when closing, though reset on open might be sufficient
+        // reset({ front: '', back: '' });
+      }
+    }
+  }, [isOpen, card, reset]);
+
+  // Effect to handle closing via Escape key or backdrop click
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const handleClose = () => {
+      onOpenChange(false);
+      setApiError(null); // Clear API error on close
+    };
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (event.target === dialog) {
+        handleClose();
+      }
+    };
+
+    dialog.addEventListener('close', handleClose);
+    dialog.addEventListener('click', handleClickOutside);
+
+    return () => {
+      dialog.removeEventListener('close', handleClose);
+      dialog.removeEventListener('click', handleClickOutside);
+    };
+  }, [onOpenChange]);
+
 
   const onSubmit: SubmitHandler<CardUpdatePayload> = (data) => {
     if (!card) {
-      console.error('Cannot submit: No card selected for editing.');
-      setApiError('Cannot submit: No card selected for editing.');
+      console.error('Attempted to submit edit form without a card.');
+      setApiError(new AppError('No card selected for editing.', 400, 'VALIDATION_ERROR'));
       return;
     }
-    setApiError(null); // Clear previous API errors before submitting
-    console.log('Submitting update for card:', card.id, 'with data:', data);
-    mutate({ cardId: card.id, data });
+    setApiError(null); // Clear previous API error before new submission
+    console.log('Submitting card update:', { cardId: card.id, data });
+    updateCardMutation.mutate({ cardId: card.id, data });
   };
 
-  const handleClose = () => {
+  const handleCancel = () => {
     onOpenChange(false);
-    // Optionally reset form here if desired when closing via cancel/overlay
-    // reset({ front: card?.front || '', back: card?.back || '' });
-    setApiError(null); // Clear errors on close
+    setApiError(null); // Clear API error on cancel
   };
 
-  if (!isOpen || !card) {
-    return null; // Don't render anything if not open or no card
-  }
+  const isPending = updateCardMutation.isPending || isSubmitting;
+
+  // Stringify details outside JSX to satisfy TypeScript
+  const detailsString = apiError && isAppError(apiError) && apiError.details
+    ? JSON.stringify(apiError.details, null, 2)
+    : null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
-      onClick={handleClose} // Close on overlay click
+    <dialog
+      ref={dialogRef}
+      className="p-6 rounded-lg shadow-xl bg-white dark:bg-gray-800 w-full max-w-md backdrop:bg-black backdrop:opacity-50"
     >
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4"
-        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside the modal content
-      >
-        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">
-          Edit Card
-        </h2>
-
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <div className="mb-4">
-            <label
-              htmlFor="front"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-            >
-              Front
-            </label>
-            <textarea
-              id="front"
-              {...register('front')}
-              rows={4}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${
-                errors.front ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600'
-              }`}
-              aria-invalid={errors.front ? 'true' : 'false'}
-            />
-            {errors.front && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                {errors.front.message}
-              </p>
-            )}
-          </div>
-
-          <div className="mb-6">
-            <label
-              htmlFor="back"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-            >
-              Back
-            </label>
-            <textarea
-              id="back"
-              {...register('back')}
-              rows={4}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${
-                errors.back ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600'
-              }`}
-              aria-invalid={errors.back ? 'true' : 'false'}
-            />
-            {errors.back && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                {errors.back.message}
-              </p>
-            )}
-          </div>
-
-          {/* Display API Error */}
-          {apiError && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
-              <p className="text-sm">{apiError}</p>
-            </div>
+      <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Edit Card</h2>
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <div className="mb-4">
+          <label htmlFor="front" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Front
+          </label>
+          <textarea
+            id="front"
+            {...register('front')}
+            rows={4}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-indigo-400 dark:focus:border-indigo-400"
+            aria-invalid={errors.front ? 'true' : 'false'}
+          />
+          {errors.front && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+              {errors.front.message}
+            </p>
           )}
-          {/* Display general form error from refine */}
-           {errors.root && ( // Check for root errors if using refine on the schema object itself
-             <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
-               <p className="text-sm">{errors.root.message}</p>
-             </div>
-           )}
+        </div>
 
+        <div className="mb-6">
+          <label htmlFor="back" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Back
+          </label>
+          <textarea
+            id="back"
+            {...register('back')}
+            rows={4}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-indigo-400 dark:focus:border-indigo-400"
+            aria-invalid={errors.back ? 'true' : 'false'}
+          />
+          {errors.back && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+              {errors.back.message}
+            </p>
+          )}
+        </div>
 
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:bg-gray-600 dark:text-gray-100 dark:hover:bg-gray-500"
-              disabled={isPending || isSubmitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isPending || isSubmitting}
-            >
-              {isPending || isSubmitting ? 'Saving...' : 'Save'}
-            </button>
+        {/* Display API Error */}
+        {apiError && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
+            <p className="font-semibold">Error Updating Card</p>
+            <p>{apiError.message}</p>
+            {detailsString && (
+              <pre className="mt-2 text-xs overflow-auto">{detailsString}</pre>
+            )}
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+        {/* Display Zod refine error */}
+         {errors.root && ( // Check for root errors from refine
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+              {errors.root.message}
+            </p>
+          )}
+
+
+        <div className="flex justify-end space-x-3">
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:bg-gray-600 dark:text-gray-100 dark:hover:bg-gray-500 dark:focus:ring-offset-gray-800"
+            disabled={isPending}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed dark:focus:ring-offset-gray-800"
+            disabled={isPending}
+          >
+            {isPending ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 };
 ```
@@ -1491,8 +1676,16 @@ interface CardListProps {
 
 
 export const CardList: React.FC<CardListProps> = ({ deckId }) => {
+  // ★ Pagination State ★
+  const ITEMS_PER_PAGE = 10; // 1ページあたりの表示件数
+  const [offset, setOffset] = useState(0); // 現在のオフセット
+
+  // ★ Updated useCards hook call ★
   // useCards returns cards with Date objects for date fields
-  const { cards, isLoading, error } = useCards(deckId);
+  const { cards, pagination, isLoading, isFetching, error } = useCards(deckId, {
+    offset: offset,
+    limit: ITEMS_PER_PAGE,
+  });
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [cardToDelete, setCardToDelete] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false); // State to track client-side mount
@@ -1635,6 +1828,36 @@ return (
       )}
     </div>
     {/* </YStack> */}
+
+      {/* ★ Pagination Controls ★ */}
+      {!isLoading && !error && pagination && pagination.totalItems > 0 && (
+        <div className="mt-6 flex items-center justify-center space-x-4">
+          {/* Previous Button */}
+          <button
+            onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
+            // 前のページがない or データ取得中は disabled
+            disabled={!pagination._links.previous || isFetching}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Previous
+          </button>
+
+          {/* Page Info (例) */}
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            {`Showing ${offset + 1} - ${Math.min(pagination.totalItems, offset + ITEMS_PER_PAGE)} of ${pagination.totalItems}`}
+          </span>
+
+          {/* Next Button */}
+          <button
+            onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
+            // 次のページがない or データ取得中は disabled
+            disabled={!pagination._links.next || isFetching}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
     {/* Render Confirmation Dialog via Portal if mounted */}
     {isMounted && createPortal(
@@ -1804,75 +2027,268 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
 
 ## File: components/features/DeckCreateModal.tsx
 ```typescript
+// src/components/features/DeckCreateModal.tsx
 import React from 'react';
 import { DeckCreateForm } from './DeckCreateForm';
 
 interface DeckCreateModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccess?: () => void; // Optional callback after successful creation
+  onSuccess?: () => void;
 }
 
 export function DeckCreateModal({ isOpen, onOpenChange, onSuccess }: DeckCreateModalProps) {
   const handleSuccess = () => {
-    onOpenChange(false); // Close modal on success
+    onOpenChange(false);
     if (onSuccess) {
       onSuccess();
     }
   };
 
-  // Handle closing the modal when clicking the overlay
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Check if the click target is the overlay itself, not its children
     if (e.target === e.currentTarget) {
       onOpenChange(false);
     }
   };
 
   if (!isOpen) {
-    return null; // Don't render anything if the modal is closed
+    return null;
   }
 
   return (
-    // Portal equivalent (rendered at the end of body usually, but here just fixed position)
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm" // Added background/blur to overlay div
       aria-labelledby="deck-create-modal-title"
       role="dialog"
       aria-modal="true"
+      onClick={handleOverlayClick} // Close on overlay click
     >
-      {/* Overlay */}
+      {/* Modal Content - Stop propagation */}
       <div
-        className="fixed inset-0 bg-black/50 transition-opacity"
-        aria-hidden="true"
-        onClick={handleOverlayClick} // Close on overlay click
-      ></div>
-
-      {/* Modal Content */}
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-white dark:bg-gray-800 shadow-xl transform transition-all sm:my-8">
+        className="relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-white dark:bg-gray-800 shadow-xl transform transition-all sm:my-8"
+        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+       >
         <div className="p-6 space-y-4">
           <h2 id="deck-create-modal-title" className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100">
             Create New Deck
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Enter the name for your new deck. Click save when you're done.
+             {/* ★★★ Fixed ' */}
+            Enter the name for your new deck. Click save when you&apos;re done.
           </p>
-          {/* Deck Create Form */}
           <DeckCreateForm onSuccess={handleSuccess} />
-
-          {/* Optional: Add a close button if needed */}
-          {/* <button
-            onClick={() => onOpenChange(false)}
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-500"
-          >
-            <span className="sr-only">Close</span>
-            X {/* Replace with an icon if available *}
-          {/* </button> */}
         </div>
       </div>
     </div>
   );
 }
+```
+
+## File: components/features/DeckEditModal.tsx
+```typescript
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useForm, SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { deckUpdateSchema, DeckUpdatePayload } from 'src/lib/zod'; // Corrected path
+import { useUpdateDeck, ApiError } from 'src/hooks/useDeckMutations'; // Corrected path
+import type { DeckApiResponse } from 'src/types'; // Corrected path (assuming index.ts exports it)
+import type { AppError } from 'src/lib/errors'; // Corrected path
+import { AuthError } from '@supabase/supabase-js';
+
+interface DeckEditModalProps {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  deck: DeckApiResponse | null;
+  onSuccess?: () => void;
+}
+
+export const DeckEditModal: React.FC<DeckEditModalProps> = ({
+  isOpen,
+  onOpenChange,
+  deck,
+  onSuccess,
+}) => {
+  const [apiError, setApiError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<DeckUpdatePayload>({
+    resolver: zodResolver(deckUpdateSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+    },
+  });
+
+  // Reset form when modal opens or the deck data changes
+  useEffect(() => {
+    if (isOpen && deck) {
+      reset({
+        name: deck.name,
+        description: deck.description ?? '', // Handle null description
+      });
+      setApiError(null); // Clear previous errors
+    }
+    // Optional: Clear form when modal closes (uncomment if needed)
+    // if (!isOpen) {
+    //   reset({ name: '', description: '' });
+    //   setApiError(null);
+    // }
+  }, [isOpen, deck, reset]);
+
+  const handleSuccess = (updatedDeck: DeckApiResponse) => {
+    console.log('Deck updated successfully:', updatedDeck);
+    setApiError(null);
+    onSuccess?.();
+    onOpenChange(false);
+  };
+
+  const handleError = (error: ApiError | AuthError | AppError) => { // Include AppError if needed
+    console.error('Error updating deck:', error);
+    // Check if error has a message property before accessing it
+    const message = 'message' in error ? error.message : 'An unexpected error occurred.';
+    setApiError(message);
+  };
+
+  // Setup mutation with callbacks
+  const { mutate: updateDeckMutate, isPending: updateIsPending, error: mutationError } = useUpdateDeck();
+
+  const onSubmit: SubmitHandler<DeckUpdatePayload> = (data) => {
+    if (!deck) {
+      setApiError('Error: No deck selected for editing.');
+      return;
+    }
+
+    // Convert empty string description back to null if necessary for API/DB
+    const dataToSubmit: DeckUpdatePayload = {
+      ...data,
+      description: data.description === '' ? null : data.description,
+    };
+
+    // Optional: Only submit if there are actual changes
+    const hasChanges = dataToSubmit.name !== deck.name || dataToSubmit.description !== deck.description;
+    if (!hasChanges) {
+        onOpenChange(false); // Close if no changes
+        return;
+    }
+
+
+    setApiError(null); // Clear previous errors before submitting
+    updateDeckMutate(
+        { deckId: deck.id, data: dataToSubmit },
+        { onSuccess: handleSuccess, onError: handleError } // Pass callbacks here
+    );
+  };
+
+  // Early return if modal is not open
+  if (!isOpen) {
+    return null;
+  }
+
+  // Determine if the submit button should be disabled
+  const isProcessing = isSubmitting || updateIsPending;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md relative">
+        {/* Close button */}
+        <button
+          onClick={() => onOpenChange(false)}
+          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          aria-label="Close modal"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Edit Deck</h2>
+
+        <form onSubmit={handleSubmit(onSubmit)} noValidate>
+          <div className="mb-4">
+            <label htmlFor="deck-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Deck Name
+            </label>
+            <input
+              id="deck-name"
+              type="text"
+              {...register('name')}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                errors.name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+              }`}
+              aria-invalid={errors.name ? 'true' : 'false'}
+            />
+            {errors.name && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+                {errors.name.message}
+              </p>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <label htmlFor="deck-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Description (Optional)
+            </label>
+            <textarea
+              id="deck-description"
+              rows={3}
+              {...register('description')}
+              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                errors.description ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+              }`}
+              aria-invalid={errors.description ? 'true' : 'false'}
+            />
+            {errors.description && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+                {errors.description.message}
+              </p>
+            )}
+          </div>
+
+          {/* API Error Display */}
+          {apiError && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
+              <p className="text-sm">{apiError}</p>
+            </div>
+          )}
+          {/* Display mutation error if not handled by apiError state already */}
+          {mutationError && !apiError && (
+             <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
+               <p className="text-sm">{'message' in mutationError ? mutationError.message : 'An unexpected error occurred during submission.'}</p>
+             </div>
+           )}
+
+
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:bg-gray-600 dark:text-gray-200 dark:border-gray-500 dark:hover:bg-gray-500"
+              disabled={isProcessing}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
+                isProcessing
+                  ? 'bg-indigo-400 cursor-not-allowed dark:bg-indigo-700'
+                  : 'bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600'
+              }`}
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 ```
 
 ## File: components/providers/AuthProvider.tsx
@@ -2173,13 +2589,13 @@ export function isAuthError(error: unknown): error is AuthError {
 
 ## File: hooks/useCardMutations.ts
 ```typescript
+// src/hooks/useCardMutations.ts
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-// import { Prisma } from '@prisma/client'; // Using local interface instead
-import { AppError, ERROR_CODES } from '@/lib/errors'; // Import base error type and ERROR_CODES
-// import { useLocale } from 'next-intl'; // Removed: No longer needed for API calls
-// import { i18nConfig } from '@/i18n/routing'; // Not needed for useLocale
-import { CardUpdatePayload } from '@/lib/zod'; // Import the payload type
-// Define a simple interface for the Card data matching the expected API response
+import { AppError, ERROR_CODES } from '@/lib/errors';
+// import { useLocale } from 'next-intl'; // Removed
+import { type CardUpdatePayload } from '@/lib/zod';
+
+// Define or import Card type
 export interface Card {
   id: string;
   front: string;
@@ -2187,60 +2603,48 @@ export interface Card {
   deckId: string;
   interval: number;
   easeFactor: number;
-  nextReviewAt: string; // Or Date, adjust based on API serialization
-  createdAt: string;    // Or Date
-  updatedAt: string;    // Or Date
-  // Add other optional fields from prisma/schema.prisma if needed
-  // frontAudioUrl?: string | null;
-  // backAudioUrl?: string | null;
-  // explanation?: string | null;
-  // translation?: string | null;
+  nextReviewAt: string | Date; // Use string if API returns string, Date if objects are preferred
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  frontAudioUrl?: string | null;
+  backAudioUrl?: string | null;
+  explanation?: string | null;
+  translation?: string | null;
 }
 
-// Define the type for the data needed to create a card
 type CreateCardData = {
   front: string;
   back: string;
 };
 
-// Define the type for the mutation context, including the deckId
 type CreateCardContext = {
   deckId: string;
 };
 
-// API call function
+// --- Create Card API Call ---
 const createCardApi = async (
   { deckId }: CreateCardContext,
   newData: CreateCardData
 ): Promise<Card> => {
-  const response = await fetch(`/api/decks/${deckId}/cards`, {
+  const apiUrl = `/api/decks/${deckId}/cards`; // locale-independent
+  const response = await fetch(apiUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(newData),
   });
-
   if (!response.ok) {
-    const errorData = await response.json();
-    // Throw an AppError or a more specific error based on errorData
+    const errorData = await response.json().catch(() => ({}));
     throw new AppError(
       errorData.message || 'Failed to create card',
       response.status,
-      errorData.errorCode || 'API_ERROR',
+      errorData.errorCode || ERROR_CODES.INTERNAL_SERVER_ERROR,
       errorData.details
     );
   }
-
   return response.json();
 };
 
-/**
- * Custom hook for creating a new card within a specific deck.
- *
- * @param deckId - The ID of the deck to add the card to.
- * @param options - Optional TanStack Query mutation options (e.g., onSuccess, onError).
- */
+// --- useCreateCard Hook ---
 export const useCreateCard = (
   deckId: string,
   options?: {
@@ -2249,13 +2653,9 @@ export const useCreateCard = (
   }
 ) => {
   const queryClient = useQueryClient();
-  // const locale = useLocale(); // Removed: No longer needed for API calls
-
   return useMutation<Card, AppError, CreateCardData>({
     mutationFn: (newData) => createCardApi({ deckId }, newData),
     onSuccess: (data) => {
-      // Invalidate the query for the list of cards in this deck
-      // Adjust the query key based on how you fetch cards (e.g., in useCards hook)
       queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
       console.log('Card created successfully:', data);
       options?.onSuccess?.(data);
@@ -2263,65 +2663,49 @@ export const useCreateCard = (
     onError: (error) => {
       console.error('Error creating card:', error);
       options?.onError?.(error);
-      // Handle error display in the UI (e.g., show a toast notification)
     },
   });
 };
 
-// Add other card mutation hooks here (e.g., useUpdateCard, useDeleteCard)
-// --- Delete Card ---
-
-// API call function for deleting a card
+// --- Delete Card API Call ---
 const deleteCardApi = async (
   deckId: string,
   cardId: string
 ): Promise<void> => {
-  const response = await fetch(`/api/decks/${deckId}/cards/${cardId}`, {
-    method: 'DELETE',
-  });
-
-  // 204 No Content is a success status for DELETE
+  const apiUrl = `/api/decks/${deckId}/cards/${cardId}`; // locale-independent
+  const response = await fetch(apiUrl, { method: 'DELETE' });
   if (!response.ok && response.status !== 204) {
     let errorData = { message: 'Failed to delete card', errorCode: 'API_ERROR', details: null };
     try {
-        // Attempt to parse error details if available
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
         errorData = await response.json();
-    } catch (_e) {
-        // Ignore JSON parse error if body is empty or not JSON
-        console.warn("Could not parse error response body for DELETE card request.");
+      }
+      
+    } catch (_e) { // _e is unused
+      console.warn("Could not parse error response body for DELETE card request.");
     }
     throw new AppError(
       errorData.message || 'Failed to delete card',
       response.status,
-      // Use a valid ErrorCode as fallback
       (ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] || ERROR_CODES.INTERNAL_SERVER_ERROR),
       errorData.details
     );
   }
-
-  // No content to return on successful deletion (204)
 };
 
-/**
- * Custom hook for deleting a card from a specific deck.
- *
- * @param deckId - The ID of the deck the card belongs to.
- * @param options - Optional TanStack Query mutation options (e.g., onSuccess, onError).
- */
+// --- useDeleteCard Hook ---
 export const useDeleteCard = (
   deckId: string,
   options?: {
-    onSuccess?: (cardId: string) => void; // Pass cardId to onSuccess for potential UI updates
+    onSuccess?: (cardId: string) => void;
     onError?: (error: AppError, cardId: string) => void;
   }
 ) => {
   const queryClient = useQueryClient();
-  // const locale = useLocale(); // Removed: No longer needed for API calls
-
-  return useMutation<void, AppError, { cardId: string }>({ // Takes { cardId } as input
+  return useMutation<void, AppError, { cardId: string }>({
     mutationFn: ({ cardId }) => deleteCardApi(deckId, cardId),
-    onSuccess: (_, variables) => { // First arg is data (void), second is variables ({ cardId })
-      // Invalidate the query for the list of cards in this deck
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
       console.log(`Card ${variables.cardId} deleted successfully from deck ${deckId}`);
       options?.onSuccess?.(variables.cardId);
@@ -2329,194 +2713,109 @@ export const useDeleteCard = (
     onError: (error, variables) => {
       console.error(`Error deleting card ${variables.cardId}:`, error);
       options?.onError?.(error, variables.cardId);
-      // Handle error display in the UI
     },
   });
 };
 
 // --- Update Card API Call ---
-
-// Define or import the Card type (use local if needed, align with API response)
-// Using local definition from lines 8-23
-
 const updateCardApi = async (
   deckId: string,
   cardId: string,
-  updateData: CardUpdatePayload // Use the imported type
-): Promise<Card> => { // Should return the updated Card object on success
-  if (!deckId || !cardId) {
-      throw new Error('Deck ID and Card ID are required for updating a card.');
-  }
-
-  const apiUrl = `/api/decks/${deckId}/cards/${cardId}`;
-  console.log(`[updateCardApi] Calling PUT ${apiUrl}`); // For debugging
-
+  updateData: CardUpdatePayload
+): Promise<Card> => {
+  const apiUrl = `/api/decks/${deckId}/cards/${cardId}`; // locale-independent
+  console.log(`[updateCardApi] Calling PUT ${apiUrl}`);
   const response = await fetch(apiUrl, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      // Include other necessary headers like Authorization if needed, though usually handled by cookies/middleware
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updateData),
   });
-
   if (!response.ok) {
-    // Attempt to parse error details from the response body
-    let errorBody = { message: `Failed to update card (Status: ${response.status})`, errorCode: 'API_ERROR', details: null };
+    let errorData = { message: `Failed to update card (Status: ${response.status})`, errorCode: 'API_ERROR', details: null };
     try {
-        // Check content type before parsing
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-             errorBody = await response.json();
-        }
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+           errorData = await response.json();
+      }
     } catch (e) {
       console.warn("[updateCardApi] Could not parse error response body:", e);
-      // Keep default error message if parsing fails
     }
-
-    // Throw an AppError using details from the parsed body or defaults
     throw new AppError(
-      errorBody.message || `Failed to update card (Status: ${response.status})`,
+      errorData.message,
       response.status,
-      // Use the errorCode from the response if available and valid, otherwise default
-      (ERROR_CODES[errorBody.errorCode as keyof typeof ERROR_CODES] || ERROR_CODES.INTERNAL_SERVER_ERROR),
-      errorBody.details
+      (ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] || ERROR_CODES.INTERNAL_SERVER_ERROR),
+      errorData.details
     );
   }
-
-  // If response is OK (e.g., 200), parse and return the updated card data
-  return response.json() as Promise<Card>; // Type assertion based on expected API success response
+  return response.json();
 };
 
-
-/**
- * Custom hook for updating an existing card within a specific deck.
- * Handles API interaction, loading state, errors, and cache invalidation.
- *
- * @param deckId - The ID of the deck the card belongs to. This is used for cache invalidation.
- * @param options - Optional TanStack Query mutation options like onSuccess and onError callbacks.
- */
+// --- useUpdateCard Hook ---
 export const useUpdateCard = (
-  deckId: string, // Required for cache invalidation
+  deckId: string,
   options?: {
-    /** Callback function fired upon successful mutation. Receives the updated card data and original variables. */
     onSuccess?: (updatedCard: Card, variables: { cardId: string; data: CardUpdatePayload }) => void;
-    /** Callback function fired upon mutation error. Receives the error and original variables. */
     onError?: (error: AppError, variables: { cardId: string; data: CardUpdatePayload }) => void;
-    /** Add other standard useMutation options if needed (e.g., onMutate, onSettled) */
   }
 ) => {
   const queryClient = useQueryClient();
-  // const locale = useLocale(); // Removed: No longer needed for API calls
-
-  // Define the mutation using useMutation
   return useMutation<
-    Card,                                     // Type returned by mutationFn on success (updated card)
-    AppError,                                 // Type of error thrown on failure
-    { cardId: string; data: CardUpdatePayload } // Type of variables passed to the mutate function
+    Card,
+    AppError,
+    { cardId: string; data: CardUpdatePayload }
   >({
-    // The core mutation function that performs the asynchronous task
     mutationFn: ({ cardId, data }) => updateCardApi(deckId, cardId, data),
-
-    // Function called after the mutation succeeds
     onSuccess: (updatedCard, variables) => {
-      console.log(`Card ${variables.cardId} updated successfully. Invalidating cache for deck ${deckId}.`);
-
-      // Invalidate the query cache for the list of cards in this deck to trigger a refetch.
-      // Ensure the query key matches the one used in the useCards hook.
       queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
-
-      // Call the user-provided onSuccess callback, if defined
+      console.log(`Card ${variables.cardId} updated successfully:`, updatedCard);
       options?.onSuccess?.(updatedCard, variables);
     },
-
-    // Function called after the mutation fails
     onError: (error, variables) => {
       console.error(`Error updating card ${variables.cardId}:`, error);
-
-      // Call the user-provided onError callback, if defined
       options?.onError?.(error, variables);
-
-      // Note: UI-level error display (e.g., toasts) should typically be handled
-      // in the component calling this hook, using the error state returned by useMutation.
     },
-
-    // Include other options passed by the user if necessary
-    // ...options, // This would spread other options like onMutate, onSettled, etc.
   });
 };
 ```
 
 ## File: hooks/useCards.ts
 ```typescript
-// src/hooks/useCards.ts (useQuery を使うように修正)
+// src/hooks/useCards.ts (Updated for pagination)
 
-import { useQuery } from '@tanstack/react-query'; // ★ useQuery をインポート ★
+import { useQuery } from '@tanstack/react-query';
 import { AppError, isAppError } from '@/lib/errors';
-// import { Card } from '@prisma/client'; // もし Prisma Client の型が使えるならこちらを推奨
+// Import types needed for pagination and the card data structure
+import { type PaginatedCardsResponse, type CardApiResponse } from '@/types/api.types';
 
-// ★ 手動の状態管理 (useState) は削除 ★
-// const [cards, setCards] = useState<Card[] | null>(null);
-// const [isLoading, setIsLoading] = useState<boolean>(true);
-// const [error, setError] = useState<AppError | Error | null>(null);
-// const [refreshKey, setRefreshKey] = useState<number>(0);
-
-// Workaround: Define Card type locally (Prisma Client 型が使えない場合)
-export type Card = {
-    id: string;
-    front: string;
-    back: string;
-    frontAudioUrl?: string | null;
-    backAudioUrl?: string | null;
-    explanation?: string | null;
-    translation?: string | null;
-    interval: number;
-    easeFactor: number;
-    nextReviewAt: Date; // API が Date 型を返すか、文字列なら Date に変換
-    createdAt: Date;
-    updatedAt: Date;
-    deckId: string;
-};
-
-// Interface for the raw data expected from the API before date conversion
-interface RawCardData {
-    id: string;
-    front: string;
-    back: string;
-    frontAudioUrl?: string | null;
-    backAudioUrl?: string | null;
-    explanation?: string | null;
-    translation?: string | null;
-    interval: number;
-    easeFactor: number;
-    nextReviewAt: string; // Expect string from API
-    createdAt: string;    // Expect string from API
-    updatedAt: string;    // Expect string from API
-    deckId: string;
-    // Add any other properties returned by the API
-}
-
-// Interface for potential error object structure
+// Interface for potential error object structure from the API
+// Consider using ApiErrorResponse from api.types.ts if it matches the actual error structure
 interface ApiErrorLike {
     message?: string;
-    errorCode?: string;
+    errorCode?: string; // Assuming AppError might add this
     details?: unknown;
-    // Add other potential error properties if known
 }
 
-// --- API からカードデータを取得する非同期関数 ---
-// (useQuery の queryFn として使われる)
-const fetchCardsByDeckId = async (deckId: string): Promise<Card[]> => {
+// --- API function to fetch paginated cards ---
+// Renamed and updated to handle pagination parameters and response structure
+const fetchPaginatedCards = async (deckId: string, offset: number, limit: number): Promise<PaginatedCardsResponse> => {
     if (!deckId) {
-        throw new Error('Deck ID is missing. Cannot fetch cards.');
+        // This check is important, although 'enabled' should prevent calls without deckId
+        throw new Error('Deck ID is required to fetch cards.');
     }
 
-    const apiUrl = `/api/decks/${deckId}/cards`;
+    // Construct URL with pagination query parameters
+    const params = new URLSearchParams({
+        offset: offset.toString(),
+        limit: limit.toString(),
+    });
+    const apiUrl = `/api/decks/${deckId}/cards?${params.toString()}`; // Use locale-independent path
     console.log(`[useCards fetcher] Fetching cards from: ${apiUrl}`);
+
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
-        let errorData: ApiErrorLike = { message: `HTTP error! status: ${response.status}` };
+        // --- Error Handling ---
+        let errorData: ApiErrorLike = { message: `Failed to fetch cards for deck ${deckId}. Status: ${response.status}` };
         try {
             const contentType = response.headers.get('content-type');
             if (response.body && contentType && contentType.includes('application/json')) {
@@ -2524,95 +2823,110 @@ const fetchCardsByDeckId = async (deckId: string): Promise<Card[]> => {
             } else if (response.body) {
                  const textResponse = await response.text();
                  console.warn(`[useCards fetcher] Received non-JSON error response: ${textResponse.substring(0,100)}`);
-                 // Ensure errorData is an object before assigning
+                 // Ensure errorData is an object before assigning message
                  if (typeof errorData === 'object' && errorData !== null) {
-                    errorData.message = textResponse.substring(0,100); // エラーメッセージとして一部利用
+                    errorData.message = textResponse.substring(0,100); // Use part of the text as the message
                  }
             }
         } catch (e) {
             console.warn('[useCards fetcher] Could not parse error response body:', e);
         }
-        // AppError の形式に近いか、あるいは汎用エラーを投げる
-        // Use the type guard first
+
+        // Throw specific AppError if possible, otherwise a generic Error
         if (isAppError(errorData)) {
-           // TypeScript knows errorData is AppError, so errorCode is ErrorCode type
+           // If errorData matches AppError structure (checked by type guard)
            throw new AppError(
-               errorData.message, // message is guaranteed string by AppError
+               errorData.message, // Guaranteed string by AppError
                response.status,
-               errorData.errorCode, // No cast needed
+               errorData.errorCode, // Guaranteed ErrorCode by AppError
                errorData.details
            );
         } else {
-           // Handle non-AppError cases (might still have a message property)
+           // Handle cases where errorData is not a structured AppError
            const errorMessage = (typeof errorData === 'object' && errorData !== null && 'message' in errorData && typeof errorData.message === 'string')
-                                ? errorData.message
-                                : `HTTP error! status: ${response.status}`;
+                                ? errorData.message // Use message if available
+                                : `Failed to fetch cards for deck ${deckId}. Status: ${response.status}`; // Fallback message
            throw new Error(errorMessage);
         }
+        // --- End Error Handling ---
     }
 
-    // Assume the API returns an array of objects matching RawCardData
-    const data: RawCardData[] = await response.json();
-    // API が日付を文字列で返す場合、ここで Date オブジェクトに変換
-    const typedData: Card[] = data.map(item => ({
-        ...item,
-        nextReviewAt: new Date(item.nextReviewAt),
-        createdAt: new Date(item.createdAt),
-        updatedAt: new Date(item.updatedAt),
-    }));
-    return typedData;
+    // Assume the API returns the PaginatedCardsResponse structure directly
+    // No need for manual date conversion here if the API handles it or if done in 'select'
+    const data = await response.json();
+    // Perform a basic check or use a type guard if necessary before asserting
+    // For now, we trust the API contract and assert the type.
+    return data as PaginatedCardsResponse;
 };
 
-// --- useCards カスタムフック本体 ---
-export const useCards = (deckId: string | null) => {
-    // ★★★ useQuery を使用 ★★★
-    const {
-        data: cards, // data プロパティを 'cards' として受け取る
-        isLoading,
-        error,
-        // refetch // 手動で再取得したい場合に使う (今回は invalidate で十分なはず)
-    } = useQuery<Card[], Error | AppError>({ // 型を指定 (成功時は Card[], エラー時は Error または AppError)
-        // ★ queryKey: invalidateQueries で指定したキーと一致させる ★
-        // deckId が null や undefined の場合はクエリが無効になるようにする
-        queryKey: ['cards', deckId],
-        // ★ queryFn: データ取得関数を定義 ★
+
+// --- useCards Custom Hook ---
+
+// Define options for the hook
+interface UseCardsOptions {
+  offset?: number;
+  limit?: number;
+}
+
+// Update hook signature to accept pagination options
+export const useCards = (deckId: string | null, options: UseCardsOptions = {}) => {
+    // Get pagination options with default values
+    const { offset = 0, limit = 10 } = options;
+
+    // Use React Query's useQuery hook
+    const queryResult = useQuery<PaginatedCardsResponse, Error | AppError>({ // Update success type
+        // Update queryKey to include pagination parameters for unique caching per page
+        queryKey: ['cards', deckId, { offset, limit }],
+        // Update queryFn to call the paginated fetcher
         queryFn: () => {
-            // deckId が null でないことを保証してから fetcher を呼ぶ
+            // Double-check deckId existence (though 'enabled' handles this)
             if (!deckId) {
-                // この return は TypeScript の型チェックのため。実際には enabled: false で実行されない
-                return Promise.resolve([]);
+                // Should not happen if 'enabled' is working, return rejected promise
+                return Promise.reject(new Error("Deck ID is required."));
             }
-            return fetchCardsByDeckId(deckId);
+            // Call the updated fetcher with deckId and pagination params
+            return fetchPaginatedCards(deckId, offset, limit);
         },
-        // ★ enabled: deckId が存在する場合のみクエリを有効にする ★
+        // Ensure the query only runs when a valid deckId is provided
         enabled: !!deckId,
 
-        // (任意) キャッシュ設定など
-        // staleTime: 1 * 60 * 1000, // 1分
+        // Optional: Keep previous data while fetching new page for smoother UX
+        // keepPreviousData: true,
+        // Optional: Define staleTime if needed
+        // staleTime: 5 * 60 * 1000, // 5 minutes
     });
 
-    // ★ mutate 関数 (手動リフレッシュ用) は useQuery には不要なので削除 ★
-    // const mutate = () => {
-    //   setRefreshKey(prev => prev + 1);
-    // };
-
-    // ★ useQuery の結果を返す ★
-    return { cards: cards ?? null, isLoading, error }; // data が undefined の場合は null を返す
+    // Update the return value to provide cards array and pagination info separately
+    return {
+        // Access the nested 'data' array within the API response
+        cards: queryResult.data?.data ?? [], // Default to empty array if data is loading or error
+        // Access the 'pagination' object from the API response
+        pagination: queryResult.data?.pagination ?? null, // Default to null
+        // Pass through React Query status flags
+        isLoading: queryResult.isLoading,
+        isFetching: queryResult.isFetching, // Useful for showing loading indicators on refetch/pagination
+        error: queryResult.error, // Pass through any error object
+    };
 };
+
+// Export the Card type used in the response for components that need it
+export type { CardApiResponse as Card }; // Re-export CardApiResponse as Card
 ```
 
 ## File: hooks/useDeckMutations.ts
 ```typescript
-// src/hooks/useDeckMutations.ts
+// src/hooks/useDeckMutations.ts (API パス修正適用版)
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from './useAuth'; // Import useAuth
-import { AuthError } from '@supabase/supabase-js'; // Import AuthError directly
-import { ApiErrorResponse, DeckApiResponse, DeckCreatePayload } from '../types/api.types'; // Use DeckCreatePayload
+import { useAuth } from './useAuth';
+import { AuthError } from '@supabase/supabase-js';
+// ★ 必要な型をインポート。パスが /types/api.types.ts に変更されているか確認 ★
+import { ApiErrorResponse, DeckApiResponse, DeckCreatePayload, DeckUpdatePayload } from '../types'; // DeckUpdatePayload をインポート
 
-// Define and export a custom error class for API errors
-export class ApiError extends Error { // Add export
+// ★ ApiError クラスの定義 (重複定義を避けるため、lib/errors.ts など共通の場所に移動することも検討) ★
+// もし lib/errors.ts に同等のものがあればそちらをインポート
+export class ApiError extends Error {
   status: number;
-  details?: unknown;
+  details?: unknown; // Changed from any
 
   constructor(message: string, status: number, details?: unknown) {
     super(message);
@@ -2623,9 +2937,9 @@ export class ApiError extends Error { // Add export
 }
 
 // --- Create Deck ---
-const createDeckApi = async ({ deckData }: { deckData: DeckCreatePayload }): Promise<DeckApiResponse> => { // Use DeckCreatePayload
-  const apiUrl = `/api/decks`;
-  // ★★★ fetch 直前の URL をログ出力 ★★★
+// ★ locale 引数を削除 ★
+const createDeckApi = async ({ deckData }: { deckData: DeckCreatePayload }): Promise<DeckApiResponse> => {
+  const apiUrl = `/api/decks`; // ★ locale なし ★
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
@@ -2635,7 +2949,7 @@ const createDeckApi = async ({ deckData }: { deckData: DeckCreatePayload }): Pro
   });
 
   if (!response.ok) {
-    const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+    const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response', error: 'PARSE_ERROR' })); // Ensure error property exists
     throw new ApiError(errorData.message || `HTTP error! status: ${response.status}`, response.status, errorData.details);
   }
   return response.json();
@@ -2645,17 +2959,19 @@ export const useCreateDeck = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const userId = user?.id;
+  // const params = useParams(); // ★ 不要なら削除 ★
+  // const locale = typeof params?.locale === 'string' ? params.locale : 'en'; // ★ 不要なら削除 ★
 
-  const mutation = useMutation<DeckApiResponse, ApiError | AuthError, DeckCreatePayload>({ // Use DeckCreatePayload
-    mutationFn: (deckData: DeckCreatePayload) => createDeckApi({ deckData }), // Use DeckCreatePayload
+  const mutation = useMutation<DeckApiResponse, ApiError | AuthError, DeckCreatePayload>({
+    // ★ locale 引数を削除 ★
+    mutationFn: (deckData: DeckCreatePayload) => createDeckApi({ deckData }),
     onSuccess: (data) => {
-      // Invalidate and refetch decks query after successful creation
+      // ★ queryKey から locale を削除 (データが locale に依存しない場合) ★
       queryClient.invalidateQueries({ queryKey: ['decks', userId] });
       console.log('Deck created successfully:', data);
     },
     onError: (error) => {
       console.error('Error creating deck:', error);
-      // Handle specific errors (e.g., show notification)
     },
   });
 
@@ -2664,17 +2980,16 @@ export const useCreateDeck = () => {
 
 
 // --- Delete Deck ---
+// ★ locale 引数を削除 ★
 const deleteDeckApi = async ({ deckId }: { deckId: string }): Promise<void> => {
-  const apiUrl = `/api/decks/${deckId}`;
-  // ★★★ fetch 直前の URL をログ出力 ★★★
+  const apiUrl = `/api/decks/${deckId}`; // ★ locale なし ★
   const response = await fetch(apiUrl, {
     method: 'DELETE',
   });
-  if (response.status !== 204) { // No Content on success
-     const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+  if (response.status !== 204) {
+     const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response', error: 'PARSE_ERROR' }));
      throw new ApiError(errorData.message || `HTTP error! status: ${response.status}`, response.status, errorData.details);
   }
-  // No return needed for 204
 };
 
 
@@ -2682,124 +2997,164 @@ export const useDeleteDeck = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const userId = user?.id;
+  // const params = useParams(); // ★ 不要なら削除 ★
+  // const locale = typeof params?.locale === 'string' ? params.locale : 'en'; // ★ 不要なら削除 ★
 
   const mutation = useMutation<void, ApiError | AuthError, { deckId: string }>({
+    // ★ locale 引数を削除 ★
     mutationFn: ({ deckId }: { deckId: string }) => deleteDeckApi({ deckId }),
     onSuccess: (_, variables) => {
-      // Invalidate and refetch decks query after successful deletion
+      // ★ queryKey から locale を削除 ★
       queryClient.invalidateQueries({ queryKey: ['decks', userId] });
-      // Optionally remove the specific deck from the cache immediately
-      // queryClient.setQueryData(['decks', userId, locale], (oldData: DeckApiResponse[] | undefined) =>
-      //   oldData ? oldData.filter(deck => deck.id !== variables.deckId) : []
-      // );
       console.log(`Deck ${variables.deckId} deleted successfully`);
     },
     onError: (error, variables) => {
       console.error(`Error deleting deck ${variables.deckId}:`, error);
-      // Handle specific errors
     },
   });
 
   return mutation;
 };
 
-// --- Update Deck (Example - Assuming similar structure) ---
-// Add useUpdateDeck hook here if needed, ensuring locale is handled similarly.
+// --- Update Deck (もし実装する場合も同様に locale を削除) ---
+
+// --- Update Deck API Call ---
+const updateDeckApi = async ({ deckId, data }: { deckId: string; data: DeckUpdatePayload }): Promise<DeckApiResponse> => {
+  const apiUrl = `/api/decks/${deckId}`; // locale なし
+  console.log(`[updateDeckApi] Calling PUT ${apiUrl}`);
+
+  const response = await fetch(apiUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      // 必要に応じて他のヘッダー (Authorization など)
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    // ★ エラー時は ApiError を throw する ★
+    const errorData = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+    const message = typeof errorData.message === 'string' ? errorData.message : `HTTP error! status: ${response.status}`;
+    // 以前定義した ApiError クラスを使う
+    throw new ApiError(message, response.status, errorData.details);
+  }
+  return response.json(); // 更新後の DeckApiResponse を返す
+};
+
+
+/**
+ * Custom hook for updating an existing deck.
+ */
+export const useUpdateDeck = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth(); // Get user ID for cache invalidation key
+  const userId = user?.id;
+
+  const mutation = useMutation<
+    DeckApiResponse,                      // onSuccess に渡されるデータ型 (更新後のデッキ)
+    ApiError | AuthError,                 // onError に渡されるエラー型
+    { deckId: string; data: DeckUpdatePayload } // mutate に渡す引数の型
+  >({
+    mutationFn: updateDeckApi, // 作成した API 呼び出し関数を指定
+    onSuccess: (updatedDeck, variables) => {
+      console.log(`Deck ${variables.deckId} updated successfully:`, updatedDeck);
+
+      // Invalidate queries to refetch data
+      // 1. デッキ一覧のキャッシュを無効化
+      queryClient.invalidateQueries({ queryKey: ['decks', userId] });
+
+      // 2. (推奨) 個別デッキのキャッシュも無効化 (もしあれば)
+      queryClient.invalidateQueries({ queryKey: ['deck', variables.deckId] });
+
+      // (任意) キャッシュを直接更新して即時反映させる場合
+      // queryClient.setQueryData(['deck', variables.deckId], updatedDeck);
+      // queryClient.setQueryData(['decks', userId], (oldData: DeckApiResponse[] | undefined) =>
+      //   oldData ? oldData.map(deck => deck.id === variables.deckId ? updatedDeck : deck) : []
+      // );
+    },
+    onError: (error, variables) => {
+      console.error(`Error updating deck ${variables.deckId}:`, error);
+      // UI側で error.message などを表示することを想定
+    },
+  });
+
+  return mutation;
+};
 ```
 
 ## File: hooks/useDecks.ts
 ```typescript
-// src/hooks/useDecks.ts (Pagination 対応版)
+// src/hooks/useDecks.ts
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
-// ★ Import new types ★
+// Assuming types are exported correctly from api.types
 import { DeckApiResponse, ApiErrorResponse, PaginatedDecksResponse, PaginationMeta } from '../types/api.types';
 
-// ★ Define options type ★
 interface UseDecksOptions {
   offset?: number;
   limit?: number;
 }
 
-// ★ Define return type (optional but recommended) ★
 interface UseDecksReturn {
   decks: DeckApiResponse[];
   pagination: PaginationMeta | null;
   isLoading: boolean;
   isFetching: boolean;
-  error: Error | null;
+  error: Error | null; // Keep error type as Error for simplicity from useQuery
 }
 
-// ★ Renamed and modified fetch function to handle pagination ★
 const fetchPaginatedDecks = async (userId: string, offset: number, limit: number): Promise<PaginatedDecksResponse> => {
-  // Construct URL with pagination parameters
   const params = new URLSearchParams({
     offset: offset.toString(),
     limit: limit.toString(),
   });
-  const apiUrl = `/api/decks?${params.toString()}`; // No locale prefix needed
+  const apiUrl = `/api/decks?${params.toString()}`;
   console.log(`[useDecks fetcher] Fetching decks from: ${apiUrl}`);
 
   const response = await fetch(apiUrl);
 
   if (!response.ok) {
-    let errorData: { message?: string } = { message: `Failed to fetch decks. Status: ${response.status}` };
+    // ★★★ Fixed let -> const ★★★
+    const errorData: { message?: string } = { message: `Failed to fetch decks. Status: ${response.status}` };
     try {
       if (response.headers.get('content-length') !== '0' && response.body) {
         const parsedError: ApiErrorResponse | { message: string } = await response.json();
-        errorData.message = parsedError.message || errorData.message;
+        // Only assign if parsedError has a message property
+        if (parsedError && typeof parsedError.message === 'string') {
+             errorData.message = parsedError.message;
+        }
       }
     } catch (e) {
       console.warn('Could not parse error response body for fetchPaginatedDecks:', e);
     }
     throw new Error(errorData.message);
   }
-
-  // ★ Return the paginated response structure ★
   return response.json() as Promise<PaginatedDecksResponse>;
 };
 
-/**
- * Custom hook to fetch a paginated list of decks for the authenticated user.
- */
-// ★ Update hook signature and add return type ★
+
 export const useDecks = (options: UseDecksOptions = {}): UseDecksReturn => {
-  // ★ Set default pagination values ★
   const { offset = 0, limit = 10 } = options;
   const { user, isLoading: isAuthLoading } = useAuth();
   const userId = user?.id;
 
-  // ★ Update useQuery with new types and parameters ★
-  const queryResult = useQuery<PaginatedDecksResponse, Error>({ // ★ Update success type ★
-    // ★ Include offset and limit in queryKey ★
+  // Specify Error type for useQuery to match the catch block
+  const queryResult = useQuery<PaginatedDecksResponse, Error>({
     queryKey: ['decks', userId, { offset, limit }],
-
-    // ★ Call the paginated fetch function ★
     queryFn: () => {
-      if (!userId) {
-        // Should be handled by 'enabled' but good practice to check
-        return Promise.reject(new Error("User not authenticated"));
-      }
-      return fetchPaginatedDecks(userId, offset, limit); // ★ Pass offset and limit ★
+      if (!userId) return Promise.reject(new Error("User not authenticated"));
+      return fetchPaginatedDecks(userId, offset, limit);
     },
-
-    // Enable query only when userId is available and auth check is done
     enabled: !!userId && !isAuthLoading,
-
-    // Keep existing options like staleTime if needed
-    // staleTime: 5 * 60 * 1000,
   });
 
-  // ★ Update the return structure ★
   return {
-    // Extract decks array from the response data
     decks: queryResult.data?.data ?? [],
-    // Extract pagination metadata
     pagination: queryResult.data?.pagination ?? null,
-    // Combine loading states
     isLoading: queryResult.isLoading || isAuthLoading,
     isFetching: queryResult.isFetching,
-    error: queryResult.error,
+    error: queryResult.error, // This will be of type Error | null
   };
 };
 ```
@@ -2851,7 +3206,7 @@ export const routing = defineRouting({
 ## File: lib/auth.ts
 ```typescript
 import { cookies } from 'next/headers'
-import { createSupabaseServerActionClient } from '@/lib/supabase' // Use the server-side client creator
+import { createSupabaseServerComponentClient } from '@/lib/supabase' // Use the server-side client creator
 import { User } from '@supabase/supabase-js'
 import { AuthError } from '@supabase/supabase-js' // Import AuthError type
 
@@ -2876,8 +3231,7 @@ export const getServerUser = async (): Promise<ServerUserResult> => {
     const resolvedCookieStore = await cookies() // Await the promise
 
     // 2. Create Supabase client for server actions/components
-    const supabase = createSupabaseServerActionClient(() => resolvedCookieStore) // Pass a sync function returning the resolved store
-
+    const supabase = createSupabaseServerComponentClient(resolvedCookieStore);
     // 3. Get user session
     const { data: { user }, error } = await supabase.auth.getUser()
 
@@ -3093,33 +3447,26 @@ export const handleApiError = (error: unknown): NextResponse => {
 
 ## File: lib/supabase.ts
 ```typescript
+// src/lib/supabase.ts (最終修正版)
 import { createBrowserClient, createServerClient, type CookieOptions } from '@supabase/ssr'
 import { type ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'
 import { type NextRequest, type NextResponse } from 'next/server'
-// Removed unused import: import { deleteCookie, getCookie, setCookie } from 'cookies-next';
 
 // Ensure environment variables are defined
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY // Needed for server-side admin actions
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 if (!supabaseUrl) {
   throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_URL")
 }
-
 if (!supabaseAnonKey) {
   throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY")
 }
-
-// Note: Service Role Key might not be needed for basic auth,
-// but it's good practice to check if it's intended for server-side operations later.
-// if (!supabaseServiceRoleKey) {
-//   console.warn("Missing env.SUPABASE_SERVICE_ROLE_KEY. Server-side admin operations will fail.")
-// }
+// if (!supabaseServiceRoleKey) { console.warn(...) }
 
 
 // --- Client Components Client ---
-// Use this in Client Components (needs 'use client')
 export const createClient = () =>
   createBrowserClient(
     supabaseUrl!,
@@ -3127,7 +3474,6 @@ export const createClient = () =>
   )
 
 // --- Server Component Client (Read-Only Cookies) ---
-// Use this in Server Components
 export const createSupabaseServerComponentClient = (cookieStore: ReadonlyRequestCookies) => {
   return createServerClient(
     supabaseUrl!,
@@ -3137,50 +3483,42 @@ export const createSupabaseServerComponentClient = (cookieStore: ReadonlyRequest
         get(name: string) {
           return cookieStore.get(name)?.value
         },
-        // No set/remove methods for read-only contexts
       },
     }
   )
 }
 
 // --- Server Action / Route Handler Client (Read/Write Cookies) ---
-// Use this in Server Actions, Route Handlers
 export const createSupabaseServerActionClient = (cookieStoreAccessor: () => ReadonlyRequestCookies) => {
-        // ★★★ Accessor を関数冒頭で呼び出し、cookieStore を取得 ★★★
-        const cookieStore = cookieStoreAccessor();
-      
-        return createServerClient(
-          supabaseUrl!,
-          supabaseAnonKey!,
-          {
-            cookies: {
-              get(name: string) {
-                // ★★★ 取得した cookieStore を使うように修正 ★★★
-                return cookieStore.get(name)?.value
-              },
-              set(name: string, value: string, options: CookieOptions) {
-                try {
-                  // set は Accessor 経由のまま (呼び出し元コンテキストで実行されるため)
-                  cookieStoreAccessor().set(name, value, options)
-                } catch (error) {
-                  console.error(`ServerActionClient: Failed to set cookie '${name}'. Ensure this runs only within a Server Action or Route Handler.`, error);
-                }
-              },
-              remove(name: string, options: CookieOptions) {
-                 try {
-                  // remove も Accessor 経由のまま
-                   cookieStoreAccessor().set({ name, value: '', ...options, maxAge: 0 });
-                 } catch (error) {
-                   console.error(`ServerActionClient: Failed to remove cookie '${name}'. Ensure this runs only within a Server Action or Route Handler.`, error);
-                 }
-              },
+      const cookieStore = cookieStoreAccessor();
+      return createServerClient(
+        supabaseUrl!,
+        supabaseAnonKey!,
+        {
+          cookies: {
+            get(name: string) {
+              return cookieStore.get(name)?.value
             },
-          }
-        )
-      }
+            set(name: string, value: string, options: CookieOptions) {
+              try {
+                cookieStoreAccessor().set(name, value, options)
+              } catch (error) {
+                console.error(`ServerActionClient: Failed to set cookie '${name}'.`, error);
+              }
+            },
+            remove(name: string, options: CookieOptions) {
+              try {
+                cookieStoreAccessor().set({ name, value: '', ...options, maxAge: 0 });
+              } catch (error) {
+                console.error(`ServerActionClient: Failed to remove cookie '${name}'.`, error);
+              }
+            },
+          },
+        }
+      )
+    }
 
 // --- Middleware Client ---
-// Use this in Middleware (middleware.ts)
 export const createMiddlewareClient = (req: NextRequest, res: NextResponse) => {
     return createServerClient(
         supabaseUrl!,
@@ -3191,38 +3529,19 @@ export const createMiddlewareClient = (req: NextRequest, res: NextResponse) => {
                     return req.cookies.get(name)?.value
                 },
                 set(name: string, value: string, options: CookieOptions) {
-                    // Set cookie on the request (modifies the incoming request for subsequent handlers)
-                    req.cookies.set({
-                        name,
-                        value,
-                        ...options,
-                    })
-                    // Set cookie on the response (sends Set-Cookie header to browser)
-                    res.cookies.set({
-                        name,
-                        value,
-                        ...options,
-                    })
+                    req.cookies.set({ name, value, ...options })
+                    res.cookies.set({ name, value, ...options })
                 },
                 remove(name: string, options: CookieOptions) {
-                    // Delete cookie from the request
-                    req.cookies.delete(name) // Corrected: Use delete for request cookies
-                    // Set cookie on the response to expire immediately
-                    res.cookies.set({
-                        name,
-                        value: '',
-                        ...options,
-                        maxAge: 0,
-                    })
+                    req.cookies.delete(name)
+                    res.cookies.set({ name, value: '', ...options, maxAge: 0 })
                 },
             },
         }
     )
 }
 
-// --- Server-Side Admin Client (Optional, for elevated privileges) ---
-// Use this carefully on the server-side when Service Role Key is needed.
-// Ensure SUPABASE_SERVICE_ROLE_KEY is set in your environment.
+// --- Server-Side Admin Client (Optional) ---
 export const createAdminClient = () => {
     if (!supabaseServiceRoleKey) {
         throw new Error("Missing env.SUPABASE_SERVICE_ROLE_KEY for admin client.")
@@ -3236,11 +3555,10 @@ export const createAdminClient = () => {
                 autoRefreshToken: false,
                 detectSessionInUrl: false,
             },
-            // Provide dummy cookie methods to satisfy types
             cookies: {
                 get(_name: string) { return undefined; },
-                set(_name: string, _value: string, _options: CookieOptions) {},
-                remove(_name: string, _options: CookieOptions) {},
+                set(_name: string, _value: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
+                remove(_name: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
             }
         }
     )
@@ -3307,28 +3625,177 @@ export const cardUpdateSchema = z.object({
 
 // スキーマから TypeScript 型を生成してエクスポート
 export type CardUpdatePayload = z.infer<typeof cardUpdateSchema>;
+// --- デッキ更新用スキーマ ---
+export const deckUpdateSchema = z.object({
+  name: z.string()
+    .min(1, { message: 'Deck name cannot be empty if provided.' })
+    .max(100, { message: 'Deck name must be 100 characters or less.' })
+    .optional(),
+  description: z.string()
+    .max(500, { message: 'Description must be 500 characters or less.' })
+    .nullable() // Allow null for clearing description
+    .optional(),
+}).refine(data => data.name !== undefined || data.description !== undefined, {
+  message: "At least one field (name or description) must be provided for update.",
+  // Zod 3.23+ では refine の第二引数で path を指定可能
+  // path: ["name", "description"], // 関連フィールドを指定
+});
+
+// スキーマから TypeScript 型を生成してエクスポート
+export type DeckUpdatePayload = z.infer<typeof deckUpdateSchema>;
+```
+
+## File: services/ai.service.ts
+```typescript
+// src/services/ai.service.ts
+
+import { TextToSpeechClient } from '@google-cloud/text-to-speech';
+import { VertexAI } from '@google-cloud/vertexai';
+import { Storage } from '@google-cloud/storage';
+
+// クライアント初期化 (前回の指示通り)
+let ttsClient: TextToSpeechClient | null = null;
+let storage: Storage | null = null;
+let vertexAI: VertexAI | null = null;
+let bucketName: string = '';
+
+try {
+  ttsClient = new TextToSpeechClient();
+  storage = new Storage();
+  vertexAI = new VertexAI({ project: process.env.GCP_PROJECT_ID || '', location: 'asia-northeast1' });
+  bucketName = process.env.GCS_BUCKET_NAME || '';
+  if (!process.env.GCP_PROJECT_ID) console.warn('GCP_PROJECT_ID missing.');
+  if (!bucketName && storage) console.warn('GCS_BUCKET_NAME missing.');
+} catch (error) {
+   console.error("Failed to initialize Google Cloud clients.", error);
+   ttsClient = null; storage = null; vertexAI = null;
+}
+
+/**
+ * Generates TTS audio from text, saves it to GCS, and returns a Signed URL.
+ * @param text The text to synthesize.
+ * @param gcsFilename The desired filename (without extension) to save on GCS.
+ * @returns A promise resolving to the Signed URL for the audio file, or null on error.
+ */
+export const generateTtsAudio = async (text: string, gcsFilename: string): Promise<string | null> => {
+  // クライアントや必須引数のチェック
+  if (!ttsClient || !storage || !bucketName) {
+    console.error('generateTtsAudio: TTS client, Storage client, or Bucket Name is not initialized.');
+    return null;
+  }
+  if (!text || !gcsFilename) {
+    console.error('generateTtsAudio: Missing text or filename.');
+    return null;
+  }
+  console.log(`[AI Service] Generating TTS for filename: ${gcsFilename}`);
+
+  try {
+    // 1. Text-to-Speech リクエスト作成
+    const request = {
+      input: { text: text },
+      // 必要に応じて voice を変更してください
+      voice: { languageCode: 'ja-JP', name: 'ja-JP-Wavenet-B' },
+      audioConfig: { audioEncoding: 'MP3' as const },
+    };
+
+    // 2. 音声合成 API 呼び出し
+    console.log(`[AI Service] Calling synthesizeSpeech...`);
+    const [response] = await ttsClient.synthesizeSpeech(request);
+    const audioContent = response.audioContent;
+    if (!audioContent) {
+      console.error('generateTtsAudio: Failed to synthesize speech, audioContent is empty.');
+      return null;
+    }
+    console.log(`[AI Service] Speech synthesized successfully.`);
+
+    // 3. GCS にアップロード
+    const bucket = storage.bucket(bucketName);
+    const filePath = `tts-audio/${gcsFilename}.mp3`; // バケット内のパス
+    const file = bucket.file(filePath);
+
+    console.log(`[AI Service] Uploading TTS audio to gs://${bucketName}/${filePath}`);
+    // Buffer を直接 save する
+    await file.save(audioContent, {
+      metadata: { contentType: 'audio/mpeg' }, // MP3 の MIME タイプ
+      // resumable: false, // 小さなファイルなら不要なことが多い
+    });
+    console.log(`[AI Service] File uploaded successfully.`);
+
+    // 4. 署名付き URL (Signed URL) を生成 ★★★ file.makePublic() の代わり ★★★
+    console.log(`[AI Service] Generating Signed URL...`);
+    const expiresDate = new Date();
+    expiresDate.setFullYear(expiresDate.getFullYear() + 100); // 有効期限を約100年に設定 (事実上の無期限)
+
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read', // 読み取り用 URL
+      expires: expiresDate, // 有効期限
+      // version: 'v4', // v4 を明示的に指定することも可能
+    });
+
+    console.log(`[AI Service] Signed URL generated.`);
+    return signedUrl; // 生成された URL を返す
+
+  } catch (error) {
+    console.error(`Error in generateTtsAudio for filename ${gcsFilename}:`, error);
+    return null; // エラー時は null を返す
+  }
+};
+
+// --- (generateExplanation と generateTranslation はまだ雛形のまま) ---
+export const generateExplanation = async (text: string): Promise<string | null> => {
+    // ... (実装はまだ) ...
+    console.warn("Explanation generation logic not implemented yet.");
+    return null;
+};
+export const generateTranslation = async (text: string, targetLanguageCode: string = 'en'): Promise<string | null> => {
+    // ... (実装はまだ) ...
+    console.warn("Translation generation logic not implemented yet.");
+    return null;
+};
 ```
 
 ## File: services/card.service.ts
 ```typescript
 import prisma from '@/lib/db'; // Use the same prisma instance as other services
-import { Card } from '@prisma/client'; // Import Card type
+import { Card } from '@prisma/client'; // Import Card type directly again
 import { AppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Import custom errors
 import type { Result } from '@/types'; // Import Result type
 import type { CardUpdatePayload } from '@/lib/zod'; // Import Zod payload type
 
+// Define options and result types for pagination
+interface GetCardsByDeckIdOptions {
+  limit?: number;
+  offset?: number;
+}
+
+type GetCardsByDeckIdResult = {
+  data: Card[]; // Use direct Card type
+  totalItems: number;
+};
+
 /**
- * Fetches cards belonging to a specific deck, ensuring user ownership.
+ * Fetches cards belonging to a specific deck with pagination, ensuring user ownership.
  * @param userId - The ID of the user requesting the cards.
  * @param deckId - The ID of the deck.
- * @returns A promise that resolves to an array of cards.
+ * @param options - Optional parameters for pagination (limit, offset).
+ * @returns A promise that resolves to an object containing the cards array and total item count.
  * @throws {NotFoundError} If the deck is not found.
  * @throws {PermissionError} If the user does not own the deck.
  * @throws {DatabaseError} If any other database error occurs.
  */
-export const getCardsByDeckId = async (userId: string, deckId: string): Promise<Card[]> => {
+export const getCardsByDeckId = async (
+  userId: string,
+  deckId: string,
+  options: GetCardsByDeckIdOptions = {}
+): Promise<GetCardsByDeckIdResult> => {
+  // Set default values and validate limit/offset
+  const limit = options.limit ?? 10; // Default limit: 10
+  const offset = options.offset ?? 0; // Default offset: 0
+  const validatedLimit = Math.max(1, limit); // Ensure limit is at least 1
+  const validatedOffset = Math.max(0, offset); // Ensure offset is non-negative
+
   try {
-    // 1. Verify deck existence and ownership
+    // 1. Verify deck existence and ownership (existing logic)
     const deck = await prisma.deck.findUnique({
       where: {
         id: deckId,
@@ -3345,18 +3812,26 @@ export const getCardsByDeckId = async (userId: string, deckId: string): Promise<
         throw new PermissionError(`User does not have permission to access deck with ID ${deckId}.`);
     }
 
-    // 2. Fetch cards if ownership is confirmed
-    const cards = await prisma.card.findMany({
-      where: {
-        deckId: deckId, // Fetch cards for the confirmed deck
-      },
-      orderBy: {
-        createdAt: 'asc', // Or any other desired order
-      },
-    });
-    return cards;
+    // 2. Fetch cards and count total items in parallel if ownership is confirmed
+    const [cards, totalItems] = await prisma.$transaction([
+      prisma.card.findMany({
+        where: { deckId: deckId }, // Only fetch cards for this deck
+        orderBy: { createdAt: 'asc' }, // Or your desired order
+        skip: validatedOffset, // Use validated offset for skipping
+        take: validatedLimit, // Use validated limit for taking
+      }),
+      prisma.card.count({
+        where: { deckId: deckId }, // Count cards only for this deck
+      }),
+    ]);
+
+    // 3. Return the paginated data and total count
+    return {
+      data: cards,
+      totalItems: totalItems,
+    };
   } catch (error) {
-    // Re-throw known application errors
+    // Re-throw known application errors (existing logic)
     if (error instanceof NotFoundError || error instanceof PermissionError) {
       throw error;
     }
@@ -3482,7 +3957,7 @@ export const updateCard = async (
   deckId: string,
   cardId: string,
   data: CardUpdatePayload // Use Zod payload type
-): Promise<Result<Card, AppError>> => { // Return Result type
+): Promise<Result<Card, AppError>> => { // Return Result type with direct Card
 
   // 1. Verify card existence and ownership via the deck using findFirst
   const card = await prisma.card.findFirst({
@@ -3549,194 +4024,183 @@ export const updateCard = async (
 
 ## File: services/deck.service.ts
 ```typescript
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+// src/services/deck.service.ts
+// import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'; // ★★★ Removed unused import
 import type { Deck } from '@prisma/client'; // Import Deck type
-import prisma from '@/lib/db'; // Use default export
-import { ConflictError, DatabaseError, NotFoundError, PermissionError } from '@/lib/errors'; // Added NotFoundError and PermissionError
-import type { DeckCreatePayload } from '@/lib/zod'; // Import type from zod schema definition
+import prisma from '@/lib/db';
+import { AppError, ConflictError, DatabaseError, NotFoundError, PermissionError } from '@/lib/errors'; // ★ Import AppError
+import type { DeckCreatePayload, DeckUpdatePayload } from '@/lib/zod'; // ★ Import DeckUpdatePayload
+import type { Result } from '@/types'; // ★ Import Result type
 
-// Type definitions for pagination
+// --- Pagination types ---
 interface GetAllDecksOptions {
   limit?: number;
   offset?: number;
 }
-
 type GetAllDecksResult = {
   data: Deck[];
   totalItems: number;
 };
 
-/**
- * Creates a new deck for a given user.
- * @param userId - The ID of the user creating the deck.
- * @param data - The data for the new deck (name, description).
- * @returns The created deck object.
- * @throws {ConflictError} If a deck with the same name already exists for the user.
- * @throws {DatabaseError} If any other database error occurs.
- */
-export const createDeck = async (userId: string, data: DeckCreatePayload) => {
+// --- Service Functions ---
+
+export const createDeck = async (userId: string, data: DeckCreatePayload): Promise<Deck> => {
   try {
-    const newDeck = await prisma.deck.create({ // Use prisma instead of db
-      data: {
-        userId,
-        name: data.name,
-        description: data.description,
-      },
+    const newDeck = await prisma.deck.create({
+      data: { userId, name: data.name, description: data.description },
     });
     return newDeck;
   } catch (error) {
-    // デバッグログは（問題解決が確認できるまで）残しておいても良いでしょう
-    // const isKnownRequestError = error instanceof PrismaClientKnownRequestError; // 参考用ログは残す (Removed as unused)
-
-    // ★★★ 修正: instanceof に頼らず error.code で直接 P2002 を判定 ★★★
-    // エラーがオブジェクトであり、かつ code プロパティが 'P2002' かどうかを確認
-    // @ts-expect-error
+    // ★★★ Added description for ts-expect-error ★★★
+    // @ts-expect-error Prisma error P2002 check requires direct access to 'code' property which might not exist on generic error type
     if (error && typeof error === 'object' && error.code === 'P2002') {
-       console.log('[SERVICE CATCH BLOCK] P2002 code detected. Throwing ConflictError.');
-       // No error expected on the next line
-       throw new ConflictError(`A deck with the name "${data.name}" already exists.`);
+      console.log('[SERVICE CATCH BLOCK] P2002 code detected. Throwing ConflictError.');
+      throw new ConflictError(`A deck with the name "${data.name}" already exists.`);
     }
-
-    // ★★★ P2002 でなかった場合、または上記条件を満たさないエラーの場合 ★★★
     console.error('[SERVICE CATCH BLOCK] Not P2002 or check failed. Throwing DatabaseError.');
-    // console.error('Database error creating deck:', error); // より詳細なログに置き換え
     throw new DatabaseError('Failed to create the deck due to a database error.', error instanceof Error ? error : undefined);
   }
 };
 
-/**
- * Retrieves decks for a given user with pagination, ordered by creation date descending.
- * @param userId - The ID of the user whose decks to retrieve.
- * @param options - Options for pagination (limit, offset).
- * @returns A promise that resolves to an object containing the decks array and total item count.
- * @throws {DatabaseError} If a database error occurs during retrieval.
- */
 export const getAllDecks = async (
-  userId: string,
-  options: GetAllDecksOptions = {}
+    userId: string,
+    options: GetAllDecksOptions = {}
 ): Promise<GetAllDecksResult> => {
-  // Default values for pagination
-  const limit = options.limit ?? 10; // Default to 10 items per page
-  const offset = options.offset ?? 0; // Default to starting from the beginning
-
-  // Basic validation for limit and offset
-  const validatedLimit = Math.max(1, limit); // Ensure at least 1 item is requested
-  const validatedOffset = Math.max(0, offset); // Ensure offset is not negative
+    const limit = options.limit ?? 10;
+    const offset = options.offset ?? 0;
+    const validatedLimit = Math.max(1, limit);
+    const validatedOffset = Math.max(0, offset);
 
   try {
-    // Use $transaction to fetch data and count in parallel
     const [decks, totalItems] = await prisma.$transaction([
-      prisma.deck.findMany({
-        where: { userId: userId },
-        orderBy: { createdAt: 'desc' }, // Maintain existing sort order
-        skip: validatedOffset,
-        take: validatedLimit,
-      }),
-      prisma.deck.count({
-        where: { userId: userId },
-      }),
-    ]);
-
-    return {
-      data: decks,
-      totalItems: totalItems,
-    };
+        prisma.deck.findMany({
+          where: { userId: userId },
+          orderBy: { createdAt: 'desc' },
+          skip: validatedOffset,
+          take: validatedLimit,
+        }),
+        prisma.deck.count({
+          where: { userId: userId },
+        }),
+      ]);
+    return { data: decks, totalItems: totalItems };
   } catch (error) {
-    console.error(`Database error retrieving decks for user ${userId} with pagination:`, error); // Updated log message
-    // Throw a generic DatabaseError for any issues during retrieval
+    console.error(`Database error retrieving decks for user ${userId} with pagination:`, error);
     throw new DatabaseError('Failed to retrieve decks due to a database error.', error instanceof Error ? error : undefined);
   }
 };
 
-/**
- * Deletes a deck based on the provided deck ID and user ID.
- * Ensures the user owns the deck before deletion.
- * @param userId The ID of the user attempting to delete the deck.
- * @param deckId The ID of the deck to delete.
- * @throws {NotFoundError} If the deck is not found or the user does not have permission.
- * @throws {DatabaseError} If any other database error occurs.
- */
 export const deleteDeck = async (userId: string, deckId: string): Promise<void> => {
   try {
     const deleteResult = await prisma.deck.deleteMany({
-      where: {
-        id: deckId,
-        userId: userId, // Verify ownership
-      },
+      where: { id: deckId, userId: userId },
     });
-
-    // If no records were deleted, the deck doesn't exist or the user doesn't own it.
     if (deleteResult.count === 0) {
       throw new NotFoundError(`Deck with ID ${deckId} not found or user does not have permission.`);
     }
-
-    // Deletion successful, return void
-
   } catch (error) {
-    // Re-throw NotFoundError if it was thrown intentionally above
-    if (error instanceof NotFoundError) {
-      throw error;
-    }
-
-    // Handle other potential errors (like Prisma errors or connection issues)
+    if (error instanceof NotFoundError) throw error;
     console.error(`Database error deleting deck ${deckId} for user ${userId}:`, error);
     throw new DatabaseError('Failed to delete deck due to a database error.', error instanceof Error ? error : undefined);
   }
 };
 
-/**
- * Retrieves a specific deck by its ID for a given user.
- * Ensures the user owns the deck before returning it.
- * @param userId The ID of the user attempting to retrieve the deck.
- * @param deckId The ID of the deck to retrieve.
- * @returns A promise that resolves to the deck object.
- * @throws {NotFoundError} If the deck with the specified ID is not found.
- * @throws {PermissionError} If the user does not own the deck.
- * @throws {DatabaseError} If any other database error occurs.
- */
-export const getDeckById = async (userId: string, deckId: string) => {
+export const getDeckById = async (userId: string, deckId: string): Promise<Deck> => {
   try {
-    const deck = await prisma.deck.findUnique({
-      where: {
-        id: deckId,
-      },
-      // REMOVED: include: { cards: true }
-    });
-
-    if (!deck) {
-      throw new NotFoundError(`Deck with ID ${deckId} not found.`);
-    }
-
-    // Verify ownership
-    if (deck.userId !== userId) {
-      throw new PermissionError(`User does not have permission to access deck with ID ${deckId}.`);
-    }
-
+    const deck = await prisma.deck.findUnique({ where: { id: deckId } });
+    if (!deck) throw new NotFoundError(`Deck with ID ${deckId} not found.`);
+    if (deck.userId !== userId) throw new PermissionError(`User does not have permission to access deck with ID ${deckId}.`);
     return deck;
-
   } catch (error) {
-    // Re-throw known application errors
-    if (error instanceof NotFoundError || error instanceof PermissionError) {
-      throw error;
-    }
-
-    // Handle other potential errors (like Prisma errors or connection issues)
+    if (error instanceof NotFoundError || error instanceof PermissionError) throw error;
     console.error(`Database error retrieving deck ${deckId} for user ${userId}:`, error);
     throw new DatabaseError('Failed to retrieve deck due to a database error.', error instanceof Error ? error : undefined);
+  }
+};
+/**
+ * Updates an existing deck for a given user. Returns a Result object.
+ * @param userId - The ID of the user updating the deck.
+ * @param deckId - The ID of the deck to update.
+ * @param data - The data to update (name, description). At least one field must be provided.
+ * @returns A Promise resolving to a Result object containing the updated Deck or an AppError.
+ */
+export const updateDeck = async (
+  userId: string,
+  deckId: string,
+  data: DeckUpdatePayload
+): Promise<Result<Deck, AppError>> => { // ★ 戻り値の型を Result に変更 ★
+
+  // 1. Verify deck existence first using findUnique (not findUniqueOrThrow)
+  const currentDeck = await prisma.deck.findUnique({
+    where: { id: deckId },
+  });
+
+  if (!currentDeck) {
+    return { ok: false, error: new NotFoundError(`Deck with ID ${deckId} not found.`) };
+  }
+
+  // 2. Check ownership
+  if (currentDeck.userId !== userId) {
+    return { ok: false, error: new PermissionError(`User does not have permission to update deck with ID ${deckId}.`) };
+  }
+
+  // 3. Perform the update within a try...catch for specific Prisma errors
+  try {
+    const updatedDeck = await prisma.deck.update({
+      where: {
+        id: deckId,
+        // userId: userId, // Optional: Redundant check but adds safety
+      },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.description !== undefined && { description: data.description }),
+      },
+    });
+
+    // 4. Return success result
+    return { ok: true, value: updatedDeck };
+
+  } catch (error: unknown) {
+    // Handle potential errors during the update operation
+
+    // Prisma's Unique constraint violation (P2002) for deck name
+    // @ts-expect-error Check for Prisma specific error code if needed - add description
+    if (error && typeof error === 'object' && error.code === 'P2002') {
+       console.log('[SERVICE UPDATE CATCH BLOCK] P2002 detected. Returning ConflictError.');
+       return {
+         ok: false,
+         // ★ ConflictError を error として返す ★
+         error: new ConflictError(`A deck with the name "${data.name}" likely already exists.`)
+       };
+    }
+
+    // Other potential database errors
+    console.error(`Database error updating deck ${deckId} for user ${userId}:`, error);
+    // ★ DatabaseError を error として返す ★
+    return {
+      ok: false,
+      error: new DatabaseError('Failed to update deck due to a database error.', error instanceof Error ? error : undefined)
+    };
   }
 };
 ```
 
 ## File: types/api.types.ts
 ```typescript
-import { type Deck as PrismaDeck, type Card as PrismaCard } from '@prisma/client'; // Corrected import path
-import { type DeckCreatePayload as DeckCreatePayloadFromZod } from '@/lib/zod'; // Assuming '@/lib/zod' is the correct alias or relative path
+import { type Deck as PrismaDeck, type Card as PrismaCard } from '../../node_modules/.prisma/client'; // Use relative path based on schema output
+import { type DeckCreatePayload as DeckCreatePayloadFromZod, type DeckUpdatePayload as DeckUpdatePayloadFromZod } from '@/lib/zod'; // Assuming '@/lib/zod' is the correct alias or relative path
 
 /**
  * Payload for creating a new deck (POST /api/decks).
  * Re-exported from the Zod schema definition.
  */
 export type DeckCreatePayload = DeckCreatePayloadFromZod;
+
+/**
+ * Payload for updating an existing deck (PUT /api/decks/{deckId}).
+ * Re-exported from the Zod schema definition.
+ */
+export type DeckUpdatePayload = DeckUpdatePayloadFromZod;
 
 /**
  * Structure of a deck object returned by the API (GET /api/decks, POST /api/decks success).
@@ -3747,8 +4211,8 @@ export type DeckCreatePayload = DeckCreatePayloadFromZod;
  */
 export type CardApiResponse = Pick<
   PrismaCard,
-  'id' | 'front' | 'back' | 'createdAt' | 'updatedAt'
-  // Exclude 'deckId' or other internal fields if necessary
+  'id' | 'front' | 'back' | 'createdAt' | 'updatedAt' | 'deckId' | 'interval' | 'easeFactor' | 'nextReviewAt'
+  // Include fields needed by components like CardList
 >;
 
 
@@ -3790,6 +4254,13 @@ export interface PaginationMeta {
  */
 export interface PaginatedDecksResponse {
   data: DeckApiResponse[];
+  pagination: PaginationMeta;
+}
+/**
+ * Structure for the paginated response for cards.
+ */
+export interface PaginatedCardsResponse {
+  data: CardApiResponse[];
   pagination: PaginationMeta;
 }
 ```
