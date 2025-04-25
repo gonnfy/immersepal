@@ -46,6 +46,10 @@ app/
             route.ts
           route.ts
         route.ts
+      test-explanation/
+        route.ts
+      test-translation/
+        route.ts
       test-tts/
         route.ts
   [locale]/
@@ -244,7 +248,7 @@ export async function POST(
   context: { params: { deckId: string } }
 ) {
   try {
-    const { deckId } = context.params;
+    const { deckId } = await context.params;
 
     if (!deckId) {
       return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
@@ -388,7 +392,7 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 401 });
     }
 
-    const { deckId } = await context.params; // Await params
+    const { deckId } = context.params; // Await params
 
     // Validate deckId format if necessary (e.g., using a regex or library)
     // Example: if (!isValidUUID(deckId)) { return NextResponse.json({ error: 'BAD_REQUEST', message: 'Invalid Deck ID format.' }, { status: 400 }); }
@@ -666,14 +670,157 @@ export async function GET(request: Request) {
 }
 ```
 
+## File: app/(api)/api/test-explanation/route.ts
+```typescript
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { handleApiError, ValidationError } from "@/lib/errors"; // 必要に応じて AppError もインポート
+import { generateExplanation } from "@/services/ai.service"; // 作成したサービス関数をインポート
+
+// リクエストボディのスキーマ定義
+const testExplanationSchema = z.object({
+  text: z.string().min(1, "Text to explain cannot be empty."),
+  language: z
+    .string()
+    .min(2, "Language code must be at least 2 characters.")
+    .max(10), // 簡単な言語コードチェック
+  // 必要なら modelName もリクエスト可能にする
+  // modelName: z.string().optional(),
+});
+
+// リクエストボディの型
+type TestExplanationPayload = z.infer<typeof testExplanationSchema>;
+
+/**
+ * POST handler for testing the generateExplanation service.
+ * Expects a JSON body with "text" and "language".
+ */
+export async function POST(request: Request) {
+  try {
+    // 1. Parse Request Body
+    let body: TestExplanationPayload;
+    try {
+      // ★ ボディが空の場合も考慮して unknown で受ける ★
+      const rawBody: unknown = await request.json();
+      // ★ スキーマでパース＆バリデーション ★
+      const validation = testExplanationSchema.safeParse(rawBody);
+      if (!validation.success) {
+        // バリデーションエラーの詳細を返す
+        throw new ValidationError(
+          "Invalid request body.",
+          validation.error.flatten(),
+        );
+      }
+      body = validation.data; // 型アサーションなしでOK
+    } catch (e) {
+      // JSON パースエラーまたは Zod バリデーション以外のエラー
+      if (e instanceof ValidationError) {
+        throw e; // そのままスローして handleApiError で処理
+      }
+      console.error("Error parsing or validating request body:", e);
+      // JSON パース失敗時などは ValidationError を new して投げる
+      throw new ValidationError("Invalid JSON body or structure.");
+    }
+
+    // 2. Call the Service Function
+    const { text, language } = body;
+    // const model = body.modelName; // modelName を受け取る場合
+
+    // generateExplanation は成功すれば文字列を、失敗すれば AppError を throw する想定
+    const explanation = await generateExplanation(text, language /*, model */);
+
+    // 3. Success Response
+    return NextResponse.json({ success: true, explanation: explanation });
+  } catch (error: unknown) {
+    // 4. Error Handling (Centralized)
+    // generateExplanation が throw した AppError や、
+    // このハンドラ内で throw した ValidationError を処理
+    return handleApiError(error);
+  }
+}
+```
+
+## File: app/(api)/api/test-translation/route.ts
+```typescript
+import { NextResponse } from "next/server";
+import { z } from "zod"; // Zod をインポート
+import { handleApiError, ValidationError } from "@/lib/errors"; // エラーハンドラとバリデーションエラーをインポート
+import { generateTranslation } from "@/services/ai.service"; // 作成した翻訳サービス関数をインポート
+
+// リクエストボディのスキーマ定義 (Zod)
+const testTranslationSchema = z.object({
+  text: z.string().min(1, "Text to translate cannot be empty."),
+  sourceLanguage: z
+    .string()
+    .min(2, 'Source language must be provided (e.g., "en" or "English").'),
+  targetLanguage: z
+    .string()
+    .min(2, 'Target language must be provided (e.g., "ja" or "Japanese").'),
+  // modelName: z.string().optional(), // オプションでモデル名を上書きしたい場合
+});
+
+// リクエストボディの型 (Zodから推論)
+type TestTranslationPayload = z.infer<typeof testTranslationSchema>;
+
+/**
+ * POST handler for testing the generateTranslation service.
+ * Expects a JSON body with "text", "sourceLanguage", and "targetLanguage".
+ */
+export async function POST(request: Request) {
+  try {
+    // 1. リクエストボディのパースとバリデーション
+    let body: TestTranslationPayload;
+    try {
+      const rawBody: unknown = await request.json();
+      // Zod を使ってバリデーション
+      const validation = testTranslationSchema.safeParse(rawBody);
+      if (!validation.success) {
+        // Zod のエラー詳細を含めて ValidationError を throw
+        throw new ValidationError(
+          "Invalid request body.",
+          validation.error.flatten(),
+        );
+      }
+      body = validation.data; // バリデーション成功後のデータを格納
+    } catch (e) {
+      // バリデーションエラーはそのまま rethrow
+      if (e instanceof ValidationError) {
+        throw e;
+      }
+      // JSON パースエラーなどの場合
+      console.error("Error parsing or validating request body:", e);
+      throw new ValidationError("Invalid JSON body or structure.");
+    }
+
+    // 2. サービス関数呼び出し
+    const { text, sourceLanguage, targetLanguage } = body;
+    // const model = body.modelName; // モデル名をリクエストで指定する場合
+
+    // generateTranslation を呼び出し (成功すれば翻訳結果、失敗すればエラーが throw される)
+    const translation = await generateTranslation(
+      text,
+      sourceLanguage,
+      targetLanguage,
+      // model // モデル名を渡す場合
+    );
+
+    // 3. 成功レスポンス
+    return NextResponse.json({ success: true, translation: translation });
+  } catch (error: unknown) {
+    // 4. エラーハンドリング (handleApiError が AppError を処理)
+    return handleApiError(error);
+  }
+}
+```
+
 ## File: app/(api)/api/test-tts/route.ts
 ```typescript
 // src/app/(api)/api/test-tts/route.ts
-import { NextResponse } from 'next/server';
-import { generateTtsAudio } from '@/services/ai.service'; // 作成した関数をインポート
-import { v4 as uuidv4 } from 'uuid'; // ユニークなファイル名生成用 (必要なら bun add uuid @types/uuid)
+import { NextResponse } from "next/server";
+import { generateTtsAudio } from "@/services/ai.service"; // 作成した関数をインポート
+import { v4 as uuidv4 } from "uuid"; // ユニークなファイル名生成用 (必要なら bun add uuid @types/uuid)
 
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
   try {
     const testText = "こんにちは、これは音声合成のテストです。"; // 音声にしたいテキスト
     // GCS 上でファイル名が重複しないように UUID やタイムスタンプを使う
@@ -684,14 +831,27 @@ export async function GET(request: Request) {
 
     if (audioUrl) {
       console.log(`[Test API] Success! Audio URL: ${audioUrl}`);
-      return NextResponse.json({ success: true, url: audioUrl, message: 'TTS generated and uploaded successfully.' });
+      return NextResponse.json({
+        success: true,
+        url: audioUrl,
+        message: "TTS generated and uploaded successfully.",
+      });
     } else {
-      console.error('[Test API] Failed to generate audio URL.');
-      return NextResponse.json({ success: false, error: 'Failed to generate TTS audio URL.' }, { status: 500 });
+      console.error("[Test API] Failed to generate audio URL.");
+      return NextResponse.json(
+        { success: false, error: "Failed to generate TTS audio URL." },
+        { status: 500 },
+      );
     }
   } catch (error) {
-    console.error('[Test API] Error occurred:', error);
-    return NextResponse.json({ success: false, error: 'An unexpected error occurred during TTS test.' }, { status: 500 });
+    console.error("[Test API] Error occurred:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "An unexpected error occurred during TTS test.",
+      },
+      { status: 500 },
+    );
   }
 }
 ```
@@ -1234,7 +1394,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 
 
-
+    
 // ★ Providers はここではインポート・使用しない ★
 // import { Providers } from '@/components/providers';
 
@@ -1655,243 +1815,209 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
 
 ## File: components/features/CardList.tsx
 ```typescript
-// src/components/features/CardList.tsx
-'use client'; // This component uses hooks, so it needs to be a client component
+// src/components/features/CardList.tsx (修正案 - JSX構造見直し・完全版)
+
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { useCards, Card } from '@/hooks/useCards'; // Import Card type from useCards
-// Import Card type from useCardMutations (expects string dates), alias it for clarity
+import { useCards, Card } from '@/hooks/useCards';
+import { AiContentType } from '@prisma/client';
 import { useDeleteCard, Card as CardWithStringDates } from '@/hooks/useCardMutations';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { CardEditModal } from './CardEditModal'; // Import the new modal
-
-// import { YStack, Text, Spinner, Button } from 'tamagui'; // Example if using Tamagui
+import { CardEditModal } from './CardEditModal';
 
 interface CardListProps {
   deckId: string;
 }
 
-// Local Card type definition removed.
-
-
 export const CardList: React.FC<CardListProps> = ({ deckId }) => {
-  // ★ Pagination State ★
-  const ITEMS_PER_PAGE = 10; // 1ページあたりの表示件数
-  const [offset, setOffset] = useState(0); // 現在のオフセット
+  const ITEMS_PER_PAGE = 10;
+  const [offset, setOffset] = useState(0);
 
-  // ★ Updated useCards hook call ★
-  // useCards returns cards with Date objects for date fields
   const { cards, pagination, isLoading, isFetching, error } = useCards(deckId, {
     offset: offset,
     limit: ITEMS_PER_PAGE,
   });
+
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [cardToDelete, setCardToDelete] = useState<string | null>(null);
-  const [isMounted, setIsMounted] = useState(false); // State to track client-side mount
-
-  // State for Edit Modal - uses Card type with string dates
+  const [isMounted, setIsMounted] = useState(false);
   const [editingCard, setEditingCard] = useState<CardWithStringDates | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // Set mounted state after component mounts
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-
-  // Instantiate the delete mutation hook
   const deleteCardMutation = useDeleteCard(deckId, {
     onSuccess: (deletedCardId) => {
-      console.log(`Successfully deleted card ${deletedCardId} and invalidated query.`);
-      setIsDeleteDialogOpen(false); // Close dialog on success
+      console.log(`Successfully deleted card ${deletedCardId}`);
+      setIsDeleteDialogOpen(false);
       setCardToDelete(null);
-      // Optionally show a success toast/message here
     },
     onError: (error, deletedCardId) => {
       console.error(`Failed to delete card ${deletedCardId}:`, error.message);
-      // Keep dialog open or close? Let's close it for now.
       setIsDeleteDialogOpen(false);
       setCardToDelete(null);
-      // Optionally show an error toast/message here
-      alert(`Error deleting card: ${error.message}`); // Simple alert for now
+      alert(`Error deleting card: ${error.message}`);
     },
   });
 
-  // Handler to open the confirmation dialog
   const handleDeleteClick = (cardId: string) => {
     setCardToDelete(cardId);
     setIsDeleteDialogOpen(true);
   };
 
-  // Handler to confirm deletion
   const handleConfirmDelete = () => {
     if (cardToDelete) {
       deleteCardMutation.mutate({ cardId: cardToDelete });
-      // Dialog will be closed via onSuccess/onError callbacks
     }
   };
 
-  // Handler to open the edit modal
-  // Accepts a card object from useCards (with Date fields)
-  // Converts it to CardWithStringDates before setting state
-  const handleEditClick = (cardFromUseCards: Card) => { // Use the imported Card type
+  const handleEditClick = (cardFromUseCards: Card) => {
     if (!cardFromUseCards) return;
-    // Create the object for the modal state, converting dates to ISO strings
     const cardForModal: CardWithStringDates = {
-      ...cardFromUseCards,
-      // Ensure conversion only happens if it's actually a Date object
-      nextReviewAt: cardFromUseCards.nextReviewAt instanceof Date
-        ? cardFromUseCards.nextReviewAt.toISOString()
-        : String(cardFromUseCards.nextReviewAt ?? ''), // Handle null/undefined
-      createdAt: cardFromUseCards.createdAt instanceof Date
-        ? cardFromUseCards.createdAt.toISOString()
-        : String(cardFromUseCards.createdAt ?? ''), // Handle null/undefined
-      updatedAt: cardFromUseCards.updatedAt instanceof Date
-        ? cardFromUseCards.updatedAt.toISOString()
-        : String(cardFromUseCards.updatedAt ?? ''), // Handle null/undefined
+        ...cardFromUseCards,
+        nextReviewAt: cardFromUseCards.nextReviewAt instanceof Date ? cardFromUseCards.nextReviewAt.toISOString() : String(cardFromUseCards.nextReviewAt ?? ''),
+        createdAt: cardFromUseCards.createdAt instanceof Date ? cardFromUseCards.createdAt.toISOString() : String(cardFromUseCards.createdAt ?? ''),
+        updatedAt: cardFromUseCards.updatedAt instanceof Date ? cardFromUseCards.updatedAt.toISOString() : String(cardFromUseCards.updatedAt ?? ''),
+        // aiContents are not included here for the modal for now
     };
     setEditingCard(cardForModal);
     setIsEditModalOpen(true);
   };
 
   if (isLoading) {
-    return (
-      <div>
-        <p>Loading cards...</p>
-        {/* <Spinner size="large" color="$blue10" /> */}
-      </div>
-    );
+    return <div className="flex justify-center items-center py-10"><p>Loading cards...</p></div>;
   }
-
   if (error) {
-    return (
-      <div style={{ color: 'red' }}>
-        <p>Error loading cards: {error.message}</p>
-        {/* Optionally show error code or details */}
-        {/* {error instanceof AppError && <p>Code: {error.errorCode}</p>} */}
-      </div>
-    );
+    return <div className="p-4 text-red-600 bg-red-100 border border-red-400 rounded"><p>Error loading cards: {error.message}</p></div>;
   }
-
   if (!cards || cards.length === 0) {
-    return <p>No cards found in this deck.</p>;
+    return <p className="text-gray-500 dark:text-gray-400">No cards found in this deck yet.</p>;
   }
 
-
-// Render the Confirmation Dialog outside the main list structure
-return (
-  <>
-    {/* <YStack space="$3"> */}
+  // --- Render Card List ---
+  // Use a div wrapper instead of React Fragment just in case
+  return (
     <div>
-      <h2>Cards in this Deck ({cards?.length ?? 0})</h2>
-      {cards && cards.length > 0 ? (
-        <ul>
-          {cards.map((card) => ( // card from useCards has Date objects
-            <li key={card.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              {/* <YStack space="$2" padding="$3" borderRadius="$3" backgroundColor="$backgroundFocus"> */}
-              <div>
-                <p><strong>Front:</strong> {card.front}</p>
-                {/* <Text fontWeight="bold">Front:</Text> <Text>{card.front}</Text> */}
-                <p><strong>Back:</strong> {card.back}</p>
-                {/* <Text fontWeight="bold">Back:</Text> <Text>{card.back}</Text> */}
-                {/* Add more details as needed, e.g., next review date */}
-                <p><small>Next Review: {new Date(card.nextReviewAt).toLocaleDateString()}</small></p>
-                {/* <Text fontSize="$2" color="$color11">Next Review: {new Date(card.nextReviewAt).toLocaleDateString()}</Text> */}
+      {/* Card List */}
+      <ul className="space-y-4">
+        {cards.map((card) => (
+          <li key={card.id} className="p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 dark:border-gray-700 transition hover:shadow-md">
+            <div className="flex justify-between items-start gap-4">
+              {/* Card Content Area */}
+              <div className="flex-grow">
+                <div className="mb-2">
+                  <p className="font-semibold text-sm text-gray-500 dark:text-gray-400">Front</p>
+                  <p className="text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{card.front}</p>
+                </div>
+                <div className="mb-3">
+                  <p className="font-semibold text-sm text-gray-500 dark:text-gray-400">Back</p>
+                  <p className="text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{card.back}</p>
+                </div>
+                {/* AI Content Display Section */}
+                {card.aiContents && card.aiContents.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">AI Content:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {card.aiContents.map((content) => (
+                        <button
+                          key={content.id}
+                          className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+                          title={`Type: ${content.contentType}, Lang: ${content.language}`}
+                        >
+                          {content.contentType === AiContentType.EXPLANATION ? 'Expl.' : 'Transl.'} ({content.language})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              {/* Action Buttons Container */}
-              <div className="flex space-x-2 ml-4 self-start">
-                 {/* Edit Button */}
-                 <button
-                   onClick={() => handleEditClick(card)} // Pass the card object from useCards
-                   className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                   aria-label={`Edit card ${card.front}`}
-                 >
-                   Edit
-                 </button>
-                 {/* Delete Button */}
-                 <button
-                   onClick={() => handleDeleteClick(card.id)}
-                   disabled={deleteCardMutation.isPending && cardToDelete === card.id}
-                   className="px-2 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 dark:bg-red-900 dark:text-red-200 dark:hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                   aria-label={`Delete card ${card.front}`}
-                 >
-                   {deleteCardMutation.isPending && cardToDelete === card.id ? 'Deleting...' : 'Delete'}
-                 </button>
+              {/* Action Buttons Area */}
+              <div className="flex flex-col space-y-2 flex-shrink-0">
+                <button
+                  onClick={() => handleEditClick(card)}
+                  className="px-2.5 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 rounded hover:bg-yellow-200 dark:bg-yellow-700 dark:text-yellow-100 dark:hover:bg-yellow-600"
+                  aria-label={`Edit card`}
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDeleteClick(card.id)}
+                  disabled={deleteCardMutation.isPending && cardToDelete === card.id}
+                  className="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-100 rounded hover:bg-red-200 dark:bg-red-700 dark:text-red-100 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={`Delete card`}
+                >
+                  {deleteCardMutation.isPending && cardToDelete === card.id ? '...' : 'Delete'}
+                </button>
               </div>
-              {/* </YStack> */}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No cards found in this deck.</p> // Handle case where cards array exists but is empty
-      )}
-    </div>
-    {/* </YStack> */}
+            </div>
+            {/* Optional: SRS Info */}
+             <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-1">
+               Next: {new Date(card.nextReviewAt).toLocaleDateString()} (I:{card.interval}, EF:{card.easeFactor.toFixed(1)})
+             </div>
+          </li>
+        ))}
+      </ul>
 
-      {/* ★ Pagination Controls ★ */}
-      {!isLoading && !error && pagination && pagination.totalItems > 0 && (
-        <div className="mt-6 flex items-center justify-center space-x-4">
-          {/* Previous Button */}
-          <button
-            onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
-            // 前のページがない or データ取得中は disabled
-            disabled={!pagination._links.previous || isFetching}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            Previous
-          </button>
-
-          {/* Page Info (例) */}
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            {`Showing ${offset + 1} - ${Math.min(pagination.totalItems, offset + ITEMS_PER_PAGE)} of ${pagination.totalItems}`}
-          </span>
-
-          {/* Next Button */}
-          <button
-            onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
-            // 次のページがない or データ取得中は disabled
-            disabled={!pagination._links.next || isFetching}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            Next
-          </button>
+      {/* Pagination Controls */}
+      {isMounted && pagination && pagination.totalItems > ITEMS_PER_PAGE && (
+         <div className="mt-6 flex items-center justify-center space-x-4">
+            <button
+                onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
+                disabled={!pagination._links.previous || isFetching}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+                Previous
+            </button>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+                {`Page ${Math.floor(offset / ITEMS_PER_PAGE) + 1} / ${Math.ceil(pagination.totalItems / ITEMS_PER_PAGE)} (${pagination.totalItems} items)`}
+            </span>
+            <button
+                onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
+                disabled={!pagination._links.next || isFetching}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+                Next
+            </button>
         </div>
       )}
 
-    {/* Render Confirmation Dialog via Portal if mounted */}
-    {isMounted && createPortal(
-      <ConfirmationDialog
-        isOpen={isDeleteDialogOpen}
-        onOpenChange={setIsDeleteDialogOpen}
-        onConfirm={handleConfirmDelete}
-        title="Delete Card"
-        description="Are you sure you want to delete this card? This action cannot be undone."
-        confirmText="Delete"
-        isConfirming={deleteCardMutation.isPending}
-      />,
-      document.body // Target the body element
-    )}
-
-    {/* Render CardEditModal via Portal if mounted */}
-    {isMounted && createPortal(
-      <CardEditModal
-        isOpen={isEditModalOpen}
-        onOpenChange={setIsEditModalOpen}
-        card={editingCard} // Pass the state variable holding the card (with string dates)
-        deckId={deckId}
-        onSuccess={() => {
-          setIsEditModalOpen(false); // Close modal on success
-          setEditingCard(null); // Clear editing card state
-          // Optionally add success feedback like a toast
-          console.log('Card update successful, modal closed.');
-        }}
-      />,
-      document.body // Target the body element
-    )}
-  </>
-);
+      {/* Modals */}
+      {isMounted && createPortal(
+        <ConfirmationDialog
+          isOpen={isDeleteDialogOpen}
+          onOpenChange={setIsDeleteDialogOpen}
+          onConfirm={handleConfirmDelete}
+          title="Delete Card"
+          description="Are you sure you want to delete this card? This action cannot be undone."
+          confirmText="Delete"
+          isConfirming={deleteCardMutation.isPending}
+        />,
+        document.body
+      )}
+      {isMounted && createPortal(
+        <CardEditModal
+          isOpen={isEditModalOpen}
+          onOpenChange={setIsEditModalOpen}
+          card={editingCard} // Ensure CardEditModal handles this type correctly
+          deckId={deckId}
+          onSuccess={() => {
+            setIsEditModalOpen(false);
+            setEditingCard(null);
+            console.log('Card update successful, modal closed.');
+          }}
+        />,
+        document.body
+      )}
+    </div>
+  );
 };
+
+// Re-export Card type alias (optional)
+export type { Card };
 ```
 
 ## File: components/features/DeckCreateForm.tsx
@@ -2780,12 +2906,16 @@ export const useUpdateCard = (
 
 ## File: hooks/useCards.ts
 ```typescript
-// src/hooks/useCards.ts (Updated for pagination)
+// src/hooks/useCards.ts (Updated for aiContents and explicit return type)
 
 import { useQuery } from '@tanstack/react-query';
 import { AppError, isAppError } from '@/lib/errors';
-// Import types needed for pagination and the card data structure
-import { type PaginatedCardsResponse, type CardApiResponse } from '@/types/api.types';
+// Import types needed for pagination and the card data structure (including aiContents)
+import {
+  type PaginatedCardsResponse, // Contains CardApiResponse[] with aiContents
+  type CardApiResponse,        // Card type including aiContents
+  type PaginationMeta          // Pagination metadata type
+} from '@/types/api.types';
 
 // Interface for potential error object structure from the API
 // Consider using ApiErrorResponse from api.types.ts if it matches the actual error structure
@@ -2796,7 +2926,7 @@ interface ApiErrorLike {
 }
 
 // --- API function to fetch paginated cards ---
-// Renamed and updated to handle pagination parameters and response structure
+// Logic remains largely the same, types are updated via imports
 const fetchPaginatedCards = async (deckId: string, offset: number, limit: number): Promise<PaginatedCardsResponse> => {
     if (!deckId) {
         // This check is important, although 'enabled' should prevent calls without deckId
@@ -2814,11 +2944,12 @@ const fetchPaginatedCards = async (deckId: string, offset: number, limit: number
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
-        // --- Error Handling ---
+        // --- Error Handling (Existing logic) ---
         let errorData: ApiErrorLike = { message: `Failed to fetch cards for deck ${deckId}. Status: ${response.status}` };
         try {
             const contentType = response.headers.get('content-type');
             if (response.body && contentType && contentType.includes('application/json')) {
+                // Try to parse JSON error, potentially matching ApiErrorResponse or AppError structure
                 errorData = await response.json();
             } else if (response.body) {
                  const textResponse = await response.text();
@@ -2846,17 +2977,21 @@ const fetchPaginatedCards = async (deckId: string, offset: number, limit: number
            const errorMessage = (typeof errorData === 'object' && errorData !== null && 'message' in errorData && typeof errorData.message === 'string')
                                 ? errorData.message // Use message if available
                                 : `Failed to fetch cards for deck ${deckId}. Status: ${response.status}`; // Fallback message
-           throw new Error(errorMessage);
+           // Consider throwing AppError with a default code if appropriate
+           // throw new AppError(errorMessage, response.status, 'INTERNAL_SERVER_ERROR');
+           throw new Error(errorMessage); // Stick to generic Error for now
         }
         // --- End Error Handling ---
     }
 
     // Assume the API returns the PaginatedCardsResponse structure directly
-    // No need for manual date conversion here if the API handles it or if done in 'select'
-    const data = await response.json();
-    // Perform a basic check or use a type guard if necessary before asserting
-    // For now, we trust the API contract and assert the type.
-    return data as PaginatedCardsResponse;
+    const data: PaginatedCardsResponse = await response.json();
+    // Optional: Add validation here if needed (e.g., using Zod)
+    if (!data || !Array.isArray(data.data) || !data.pagination) {
+        console.error('[useCards fetcher] Invalid response format received:', data);
+        throw new Error('Invalid response format from cards API.');
+    }
+    return data;
 };
 
 
@@ -2868,13 +3003,28 @@ interface UseCardsOptions {
   limit?: number;
 }
 
-// Update hook signature to accept pagination options
-export const useCards = (deckId: string | null, options: UseCardsOptions = {}) => {
+// ↓↓↓ Define the explicit return type for the hook ↓↓↓
+interface UseCardsReturn {
+  /** Array of cards. Each card object conforms to CardApiResponse, including the `aiContents` array. */
+  cards: CardApiResponse[];
+  /** Pagination metadata, or null if no data. */
+  pagination: PaginationMeta | null;
+  /** True if the initial query is loading (no data yet). */
+  isLoading: boolean;
+  /** True if the query is fetching, including background fetching and refetching. */
+  isFetching: boolean;
+  /** Error object if the query failed, otherwise null. */
+  error: Error | AppError | null;
+}
+
+// Update hook signature to accept pagination options and return the defined type
+export const useCards = (deckId: string | null, options: UseCardsOptions = {}): UseCardsReturn => {
     // Get pagination options with default values
     const { offset = 0, limit = 10 } = options;
 
     // Use React Query's useQuery hook
-    const queryResult = useQuery<PaginatedCardsResponse, Error | AppError>({ // Update success type
+    // Type arguments use the imported, updated types
+    const queryResult = useQuery<PaginatedCardsResponse, Error | AppError>({
         // Update queryKey to include pagination parameters for unique caching per page
         queryKey: ['cards', deckId, { offset, limit }],
         // Update queryFn to call the paginated fetcher
@@ -2882,7 +3032,8 @@ export const useCards = (deckId: string | null, options: UseCardsOptions = {}) =
             // Double-check deckId existence (though 'enabled' handles this)
             if (!deckId) {
                 // Should not happen if 'enabled' is working, return rejected promise
-                return Promise.reject(new Error("Deck ID is required."));
+                // Use AppError for consistency if desired
+                return Promise.reject(new AppError("Deck ID is required.", 400, 'VALIDATION_ERROR'));
             }
             // Call the updated fetcher with deckId and pagination params
             return fetchPaginatedCards(deckId, offset, limit);
@@ -2896,21 +3047,25 @@ export const useCards = (deckId: string | null, options: UseCardsOptions = {}) =
         // staleTime: 5 * 60 * 1000, // 5 minutes
     });
 
-    // Update the return value to provide cards array and pagination info separately
+    // Return the structured data conforming to UseCardsReturn
     return {
-        // Access the nested 'data' array within the API response
-        cards: queryResult.data?.data ?? [], // Default to empty array if data is loading or error
+        // Access the nested 'data' array within the API response. Elements are CardApiResponse.
+        cards: queryResult.data?.data ?? [], // Default to empty array
         // Access the 'pagination' object from the API response
         pagination: queryResult.data?.pagination ?? null, // Default to null
         // Pass through React Query status flags
         isLoading: queryResult.isLoading,
-        isFetching: queryResult.isFetching, // Useful for showing loading indicators on refetch/pagination
+        isFetching: queryResult.isFetching,
         error: queryResult.error, // Pass through any error object
     };
 };
 
-// Export the Card type used in the response for components that need it
-export type { CardApiResponse as Card }; // Re-export CardApiResponse as Card
+// ↓↓↓ Re-export CardApiResponse as Card with updated JSDoc ↓↓↓
+/**
+ * Re-exporting CardApiResponse as Card for component usage.
+ * This Card type includes the `aiContents` array, reflecting the latest API structure.
+ */
+export type { CardApiResponse as Card };
 ```
 
 ## File: hooks/useDeckMutations.ts
@@ -3364,10 +3519,18 @@ export const ERROR_CODES = {
   }
   
   export class ExternalApiError extends AppError {
-      constructor(message: string = 'External API request failed.') {
-          super(message, 503, ERROR_CODES.EXTERNAL_API_FAILURE); // 503 Service Unavailable
-      }
-  }
+     /**
+       * Constructs an ExternalApiError.
+       * @param message - A human-readable description of the error. Defaults to 'External API request failed.'.
+       * @param originalError - Optional: The original error object caught, to be stored in details for logging.
+       */
+     constructor(message: string = 'External API request failed.', originalError?: Error) {
+     // super の第4引数に originalError を渡して details に格納する
+     super(message, 503, ERROR_CODES.EXTERNAL_API_FAILURE, originalError);
+     }
+    }
+    
+
   
   // ★ 予期せぬデータベースエラーなどに使用 ★
   export class DatabaseError extends AppError {
@@ -3647,120 +3810,332 @@ export type DeckUpdatePayload = z.infer<typeof deckUpdateSchema>;
 
 ## File: services/ai.service.ts
 ```typescript
-// src/services/ai.service.ts
+// src/services/ai.service.ts (デバッグログ追加後の完全版)
 
-import { TextToSpeechClient } from '@google-cloud/text-to-speech';
-import { VertexAI } from '@google-cloud/vertexai';
-import { Storage } from '@google-cloud/storage';
+import { TextToSpeechClient } from "@google-cloud/text-to-speech";
+import { VertexAI, GenerateContentRequest } from "@google-cloud/vertexai"; // Import necessary types
+import { Storage } from "@google-cloud/storage";
+import {
+  AppError,
+  ExternalApiError,
+  isAppError, // isAppError をインポート (generateExplanation, generateTranslation で使用)
+  ERROR_CODES,
+} from "@/lib/errors";
 
-// クライアント初期化 (前回の指示通り)
+// クライアント初期化
 let ttsClient: TextToSpeechClient | null = null;
 let storage: Storage | null = null;
 let vertexAI: VertexAI | null = null;
-let bucketName: string = '';
+let bucketName: string = "";
+let vertexAiModelName: string = "";
+let vertexAiRegion: string = ""; // Add variable for region
+let ttsVoiceName: string = ""; // Add variable for TTS voice
 
 try {
+  // --- ↓↓↓ デバッグログ追加 ↓↓↓ ---
+  const projectId = process.env.GCP_PROJECT_ID || '';
+  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || 'Not Set';
+  // --- ↑↑↑ デバッグログ追加ここまで ↑↑↑
+
+  // --- Make Region Configurable ---
+  const defaultRegion = 'asia-northeast1'; // Changed default region
+  vertexAiRegion = process.env.VERTEX_AI_REGION || defaultRegion;
+  console.log("--- AI Service Initialization ---");
+  console.log(`Attempting to initialize Google Cloud clients.`);
+  console.log(`Using GCP_PROJECT_ID: "${projectId}"`);
+  console.log(`Using GOOGLE_APPLICATION_CREDENTIALS: "${credentialsPath}"`);
+  // --- Update Log for Region ---
+  console.log(`Using Vertex AI Region: "${vertexAiRegion}" ${!process.env.VERTEX_AI_REGION ? '(Default)' : '(From Env Var)'}`);
+  if (!projectId || credentialsPath === 'Not Set') {
+       console.error("!!! CRITICAL: GCP_PROJECT_ID or GOOGLE_APPLICATION_CREDENTIALS seems missing or empty in .env.local !!!");
+  }
+
+  // TextToSpeechClient と Storage の初期化 (変更なし)
   ttsClient = new TextToSpeechClient();
   storage = new Storage();
-  vertexAI = new VertexAI({ project: process.env.GCP_PROJECT_ID || '', location: 'asia-northeast1' });
-  bucketName = process.env.GCS_BUCKET_NAME || '';
-  if (!process.env.GCP_PROJECT_ID) console.warn('GCP_PROJECT_ID missing.');
-  if (!bucketName && storage) console.warn('GCS_BUCKET_NAME missing.');
+
+  // VertexAI クライアントの初期化 (Use configured region)
+  vertexAI = new VertexAI({
+    project: projectId,
+    location: vertexAiRegion, // Use configured region
+  });
+
+  // GCS バケット名の取得 (変更なし)
+  bucketName = process.env.GCS_BUCKET_NAME || "";
+  if (!process.env.GCP_PROJECT_ID) console.warn("GCP_PROJECT_ID missing.");
+  if (!bucketName && storage) console.warn("GCS_BUCKET_NAME missing.");
+
+  // Determine Vertex AI model name
+  const fallbackModel = "gemini-1.5-flash-002"; // Changed fallback model to latest alias
+  vertexAiModelName = process.env.VERTEX_AI_MODEL_NAME || fallbackModel;
+  console.log(`Using Vertex AI Model: "${vertexAiModelName}" ${!process.env.VERTEX_AI_MODEL_NAME ? '(Fallback)' : '(From Env Var)'}`);
+
+  // --- Make TTS Voice Configurable ---
+  const defaultTtsVoice = "ja-JP-Wavenet-B";
+  ttsVoiceName = process.env.TTS_VOICE_NAME || defaultTtsVoice;
+  console.log(`Using TTS Voice: "${ttsVoiceName}" ${!process.env.TTS_VOICE_NAME ? '(Default)' : '(From Env Var)'}`);
+
+
 } catch (error) {
-   console.error("Failed to initialize Google Cloud clients.", error);
-   ttsClient = null; storage = null; vertexAI = null;
+  console.error("Failed to initialize Google Cloud clients.", error);
+  // 初期化失敗時はクライアントを null に設定 (変更なし)
+  ttsClient = null;
+  storage = null;
+  vertexAI = null;
 }
 
 /**
  * Generates TTS audio from text, saves it to GCS, and returns a Signed URL.
- * @param text The text to synthesize.
- * @param gcsFilename The desired filename (without extension) to save on GCS.
- * @returns A promise resolving to the Signed URL for the audio file, or null on error.
+ * (Uses configured TTS voice)
  */
-export const generateTtsAudio = async (text: string, gcsFilename: string): Promise<string | null> => {
-  // クライアントや必須引数のチェック
+export const generateTtsAudio = async (
+  text: string,
+  gcsFilename: string,
+): Promise<string | null> => {
   if (!ttsClient || !storage || !bucketName) {
-    console.error('generateTtsAudio: TTS client, Storage client, or Bucket Name is not initialized.');
+    console.error(
+      "generateTtsAudio: TTS client, Storage client, or Bucket Name is not initialized.",
+    );
     return null;
   }
   if (!text || !gcsFilename) {
-    console.error('generateTtsAudio: Missing text or filename.');
+    console.error("generateTtsAudio: Missing text or filename.");
     return null;
   }
-  console.log(`[AI Service] Generating TTS for filename: ${gcsFilename}`);
-
+  console.log(`[AI Service] Generating TTS for filename: ${gcsFilename} using voice ${ttsVoiceName}`); // Log voice used
   try {
-    // 1. Text-to-Speech リクエスト作成
     const request = {
       input: { text: text },
-      // 必要に応じて voice を変更してください
-      voice: { languageCode: 'ja-JP', name: 'ja-JP-Wavenet-B' },
-      audioConfig: { audioEncoding: 'MP3' as const },
+      // --- Use configured TTS voice ---
+      voice: { languageCode: "ja-JP", name: ttsVoiceName },
+      audioConfig: { audioEncoding: "MP3" as const },
     };
-
-    // 2. 音声合成 API 呼び出し
     console.log(`[AI Service] Calling synthesizeSpeech...`);
     const [response] = await ttsClient.synthesizeSpeech(request);
     const audioContent = response.audioContent;
     if (!audioContent) {
-      console.error('generateTtsAudio: Failed to synthesize speech, audioContent is empty.');
+      console.error(
+        "generateTtsAudio: Failed to synthesize speech, audioContent is empty.",
+      );
       return null;
     }
     console.log(`[AI Service] Speech synthesized successfully.`);
-
-    // 3. GCS にアップロード
     const bucket = storage.bucket(bucketName);
-    const filePath = `tts-audio/${gcsFilename}.mp3`; // バケット内のパス
+    const filePath = `tts-audio/${gcsFilename}.mp3`;
     const file = bucket.file(filePath);
-
-    console.log(`[AI Service] Uploading TTS audio to gs://${bucketName}/${filePath}`);
-    // Buffer を直接 save する
+    console.log(
+      `[AI Service] Uploading TTS audio to gs://${bucketName}/${filePath}`,
+    );
     await file.save(audioContent, {
-      metadata: { contentType: 'audio/mpeg' }, // MP3 の MIME タイプ
-      // resumable: false, // 小さなファイルなら不要なことが多い
+      metadata: { contentType: "audio/mpeg" },
     });
     console.log(`[AI Service] File uploaded successfully.`);
-
-    // 4. 署名付き URL (Signed URL) を生成 ★★★ file.makePublic() の代わり ★★★
     console.log(`[AI Service] Generating Signed URL...`);
     const expiresDate = new Date();
-    expiresDate.setFullYear(expiresDate.getFullYear() + 100); // 有効期限を約100年に設定 (事実上の無期限)
-
+    expiresDate.setFullYear(expiresDate.getFullYear() + 100);
     const [signedUrl] = await file.getSignedUrl({
-      action: 'read', // 読み取り用 URL
-      expires: expiresDate, // 有効期限
-      // version: 'v4', // v4 を明示的に指定することも可能
+      action: "read",
+      expires: expiresDate,
     });
-
     console.log(`[AI Service] Signed URL generated.`);
-    return signedUrl; // 生成された URL を返す
-
+    return signedUrl;
   } catch (error) {
-    console.error(`Error in generateTtsAudio for filename ${gcsFilename}:`, error);
-    return null; // エラー時は null を返す
+    console.error(
+      `Error in generateTtsAudio for filename ${gcsFilename}:`,
+      error,
+    );
+    return null;
   }
 };
 
-// --- (generateExplanation と generateTranslation はまだ雛形のまま) ---
-export const generateExplanation = async (text: string): Promise<string | null> => {
-    // ... (実装はまだ) ...
-    console.warn("Explanation generation logic not implemented yet.");
-    return null;
+
+/**
+ * Generates an explanation for a given text using a specified Gemini model via streaming.
+ */
+export const generateExplanation = async (
+  textToExplain: string,
+  targetLanguage: string,
+): Promise<string> => {
+  // Remove modelName parameter, use configured vertexAiModelName
+  if (!vertexAI) {
+    console.error("generateExplanation: Vertex AI client is not initialized.");
+    throw new ExternalApiError("Vertex AI client failed to initialize.");
+  }
+  if (!textToExplain) {
+    console.warn(
+      "generateExplanation: textToExplain is empty, returning empty string.",
+    );
+    return "";
+  }
+
+  console.log(
+    `[AI Service] Generating explanation for: "${textToExplain}" using model ${vertexAiModelName} (streaming)`, // Indicate streaming
+  );
+
+  try {
+    const generativeModel = vertexAI.getGenerativeModel({
+      model: vertexAiModelName,
+    });
+    const prompt = `Explain the meaning and usage of the ${targetLanguage} word/phrase "${textToExplain}" concisely for a language learner. Keep it simple and clear.`;
+    const request: GenerateContentRequest = { // Type the request
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    };
+
+    console.log(`[AI Service] Sending prompt to Vertex AI (streaming)...`);
+    const streamingResp = await generativeModel.generateContentStream(request);
+
+    // --- Aggregate streamed response ---
+    let aggregatedText = "";
+    for await (const item of streamingResp.stream) {
+        // Check if item and necessary properties exist
+        const partText = item?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (typeof partText === 'string') {
+            aggregatedText += partText;
+        } else {
+             console.warn("[AI Service] Received non-text part in stream:", JSON.stringify(item, null, 2));
+        }
+    }
+    // --- End aggregation ---
+
+    // Validate aggregated response
+    const generatedText = aggregatedText; // Use aggregated text
+    if (typeof generatedText !== "string" || generatedText.length === 0) {
+      console.warn(
+        "[AI Service] Received no valid text content from Vertex AI streaming response."
+        // Avoid logging potentially huge aggregated response if it failed validation
+      );
+      throw new ExternalApiError(
+        "Failed to generate explanation: No valid content received from Vertex AI stream.",
+      );
+    }
+    console.log(`[AI Service] Explanation generated successfully (streaming).`);
+    return generatedText.trim();
+  } catch (error: unknown) {
+    console.error(
+      `[AI Service] Error generating explanation for "${textToExplain}" (streaming):`, // Indicate streaming in error
+      error,
+    );
+    if (isAppError(error)) {
+      throw error;
+    } else {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unknown error during Vertex AI call.";
+      throw new ExternalApiError(
+        `Failed to generate explanation via Vertex AI stream: ${message}`,
+        error instanceof Error ? error : undefined,
+      );
+    }
+  }
 };
-export const generateTranslation = async (text: string, targetLanguageCode: string = 'en'): Promise<string | null> => {
-    // ... (実装はまだ) ...
-    console.warn("Translation generation logic not implemented yet.");
-    return null;
+
+/**
+ * Translates text from a source language to a target language using a specified Gemini model via streaming.
+ */
+export const generateTranslation = async (
+  textToTranslate: string,
+  sourceLanguage: string,
+  targetLanguageCode: string,
+): Promise<string> => {
+  // Remove modelName parameter, use configured vertexAiModelName
+  if (!vertexAI) {
+    console.error("generateTranslation: Vertex AI client is not initialized.");
+    throw new ExternalApiError("Vertex AI client failed to initialize.");
+  }
+  if (!textToTranslate) {
+    console.warn(
+      "generateTranslation: textToTranslate is empty, returning empty string.",
+    );
+    return "";
+  }
+  if (!sourceLanguage || !targetLanguageCode) {
+    console.error(
+      "generateTranslation: sourceLanguage or targetLanguageCode is missing.",
+    );
+    throw new AppError(
+      "Source and target language codes are required for translation.",
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+    );
+  }
+
+  console.log(
+    `[AI Service] Generating translation for: "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode} using model ${vertexAiModelName} (streaming)`, // Indicate streaming
+  );
+
+  try {
+    const generativeModel = vertexAI.getGenerativeModel({
+      model: vertexAiModelName,
+    });
+    const prompt = `Translate the following text accurately from ${sourceLanguage} to ${targetLanguageCode}. Return only the translated text, without any introduction, explanation, or formatting like markdown.\n\nText to translate:\n"${textToTranslate}"\n\nTranslated text:`;
+    const request: GenerateContentRequest = { // Type the request
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    };
+
+    console.log(`[AI Service] Sending translation prompt to Vertex AI (streaming)...`);
+    const streamingResp = await generativeModel.generateContentStream(request);
+
+    // --- Aggregate streamed response ---
+    let aggregatedText = "";
+     for await (const item of streamingResp.stream) {
+        // Check if item and necessary properties exist
+        const partText = item?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (typeof partText === 'string') {
+            aggregatedText += partText;
+        } else {
+             console.warn("[AI Service] Received non-text part in stream:", JSON.stringify(item, null, 2));
+        }
+    }
+    // --- End aggregation ---
+
+    // Validate aggregated response
+    const translatedText = aggregatedText; // Use aggregated text
+    if (typeof translatedText !== "string") {
+      console.warn(
+        "[AI Service] Received no valid text content from Vertex AI translation streaming response."
+         // Avoid logging potentially huge aggregated response if it failed validation
+      );
+      throw new ExternalApiError(
+        "Failed to generate translation: No valid content received from Vertex AI stream.",
+      );
+    }
+    console.log(`[AI Service] Translation generated successfully (streaming).`);
+    return translatedText.trim().replace(/^"|"$/g, ''); // Keep quote removal
+  } catch (error: unknown) {
+    console.error(
+      `[AI Service] Error generating translation for "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode} (streaming):`, // Indicate streaming in error
+      error,
+    );
+    if (isAppError(error)) {
+      throw error;
+    } else {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unknown error during Vertex AI call.";
+      throw new ExternalApiError(
+        `Failed to generate translation via Vertex AI stream: ${message}`,
+        error instanceof Error ? error : undefined,
+      );
+    }
+  }
 };
 ```
 
 ## File: services/card.service.ts
 ```typescript
-import prisma from '@/lib/db'; // Use the same prisma instance as other services
-import { Card } from '@prisma/client'; // Import Card type directly again
-import { AppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Import custom errors
-import type { Result } from '@/types'; // Import Result type
-import type { CardUpdatePayload } from '@/lib/zod'; // Import Zod payload type
+import prisma from "@/lib/db"; // Use the same prisma instance as other services
+import { Card, AiContentType, AICardContent } from "@prisma/client"; // Import Card type directly again
+import {
+  AppError,
+  NotFoundError,
+  PermissionError,
+  DatabaseError,
+} from "@/lib/errors"; // Import custom errors
+import { generateExplanation, generateTranslation } from "@/services/ai.service";
+import type { Result } from "@/types"; // Import Result type
+import type { CardUpdatePayload } from "@/lib/zod"; // Import Zod payload type
 
 // Define options and result types for pagination
 interface GetCardsByDeckIdOptions {
@@ -3768,8 +4143,12 @@ interface GetCardsByDeckIdOptions {
   offset?: number;
 }
 
+// ↓↓↓ 戻り値の型 Card[] を Card と関連 AICardContent を含む型に変更 (Prisma の推論を利用することも可能) ↓↓↓
+// 参考: Prisma が生成する型を使う場合: import { Prisma } from '@prisma/client'; type CardWithAiContents = Prisma.CardGetPayload<{ include: { aiContents: true } }>;
+// ここではシンプルに Card[] のままでも良いが、取得内容が変わることを示すコメントを追加
 type GetCardsByDeckIdResult = {
-  data: Card[]; // Use direct Card type
+  // data: Card[]; // Card に aiContents が含まれるようになる
+  data: (Card & { aiContents: AICardContent[] })[]; // より正確な型 (AICardContent のインポートが必要)
   totalItems: number;
 };
 
@@ -3786,7 +4165,7 @@ type GetCardsByDeckIdResult = {
 export const getCardsByDeckId = async (
   userId: string,
   deckId: string,
-  options: GetCardsByDeckIdOptions = {}
+  options: GetCardsByDeckIdOptions = {},
 ): Promise<GetCardsByDeckIdResult> => {
   // Set default values and validate limit/offset
   const limit = options.limit ?? 10; // Default limit: 10
@@ -3800,25 +4179,45 @@ export const getCardsByDeckId = async (
       where: {
         id: deckId,
       },
-      select: { // Only select userId to check ownership, avoid fetching full deck
+      select: {
+        // Only select userId to check ownership, avoid fetching full deck
         userId: true,
-      }
+      },
     });
 
     if (!deck) {
       throw new NotFoundError(`Deck with ID ${deckId} not found.`);
     }
     if (deck.userId !== userId) {
-        throw new PermissionError(`User does not have permission to access deck with ID ${deckId}.`);
+      throw new PermissionError(
+        `User does not have permission to access deck with ID ${deckId}.`,
+      );
     }
 
     // 2. Fetch cards and count total items in parallel if ownership is confirmed
     const [cards, totalItems] = await prisma.$transaction([
       prisma.card.findMany({
         where: { deckId: deckId }, // Only fetch cards for this deck
-        orderBy: { createdAt: 'asc' }, // Or your desired order
+        orderBy: { createdAt: "asc" }, // Or your desired order
         skip: validatedOffset, // Use validated offset for skipping
-        take: validatedLimit, // Use validated limit for taking
+        take: validatedLimit,
+        include: {
+          aiContents: {
+            // 必要なら 여기서 where や select でさらに絞り込むことも可能
+            // 例: contentType や language で絞る
+            // where: { language: 'en' },
+            select: {
+              // 返すフィールドを選択 (id は任意、他は通常必要)
+              id: true,
+              cardId: true,
+              contentType: true,
+              language: true,
+              content: true,
+              createdAt: true, // 必要に応じて
+              updatedAt: true, // 必要に応じて
+            },
+          },
+        }, // Use validated limit for taking
       }),
       prisma.card.count({
         where: { deckId: deckId }, // Count cards only for this deck
@@ -3836,24 +4235,39 @@ export const getCardsByDeckId = async (
       throw error;
     }
     // Handle other potential errors
-    console.error(`Database error fetching cards for deck ${deckId} by user ${userId}:`, error);
-    throw new DatabaseError('Failed to fetch cards due to a database error.', error instanceof Error ? error : undefined);
+    console.error(
+      `Database error fetching cards for deck ${deckId} by user ${userId}:`,
+      error,
+    );
+    throw new DatabaseError(
+      "Failed to fetch cards due to a database error.",
+      error instanceof Error ? error : undefined,
+    );
   }
 };
 
 /**
- * Creates a new card for a specific deck, ensuring user ownership.
+ * Creates a new card, ensuring user ownership, and attempts to generate
+ * explanation (en) and translation (en->ja) for the 'front' text,
+ * saving them to the AICardContent table.
  * @param userId - The ID of the user creating the card.
  * @param data - Object containing deckId, front text, and back text.
- * @returns A promise that resolves to the newly created card.
+ * @returns A promise that resolves to the newly created card object (without aiContents populated initially).
  * @throws {NotFoundError} If the deck is not found.
  * @throws {PermissionError} If the user does not own the deck.
- * @throws {DatabaseError} If any other database error occurs.
- */
-export const createCard = async (userId: string, data: { deckId: string; front: string; back: string }): Promise<Card> => {
+ * @throws {DatabaseError} If the initial card creation fails.
+ **/
+
+export const createCard = async (
+  userId: string,
+  data: { deckId: string; front: string; back: string },
+): Promise<Card> => {
+  // 戻り値は Card のまま
   const { deckId, front, back } = data;
+  let newCard: Card;
+
   try {
-    // 1. Verify deck existence and ownership
+    // 1. Verify deck existence and ownership (変更なし)
     const deck = await prisma.deck.findUnique({
       where: { id: deckId },
       select: { userId: true },
@@ -3863,27 +4277,108 @@ export const createCard = async (userId: string, data: { deckId: string; front: 
       throw new NotFoundError(`Deck with ID ${deckId} not found.`);
     }
     if (deck.userId !== userId) {
-      throw new PermissionError(`User does not have permission to add cards to deck with ID ${deckId}.`);
+      throw new PermissionError(
+        `User does not have permission to add cards to deck with ID ${deckId}.`,
+      );
     }
 
-    // 2. Create the card if ownership is confirmed
-    const newCard = await prisma.card.create({
+    // 2. Create the card in the database (変更なし)
+    newCard = await prisma.card.create({
       data: {
         front,
         back,
         deckId,
-        // Add other default fields if necessary, e.g., initial ease factor, interval
       },
     });
+
+    // --- AI コンテンツ生成・保存 ---
+
+    // 3. Generate Explanation (English)
+    try {
+      const explanationLanguage = "en"; // ★仮定
+      console.log(
+        `[Card Service] Attempting to generate explanation for card ${newCard.id}, lang: ${explanationLanguage}`,
+      );
+      const explanationContent = await generateExplanation(
+        front,
+        explanationLanguage,
+      );
+
+      if (explanationContent) {
+        // ↓↓↓ ★★★ ここを修正: prisma.aICardContent.create を使う ★★★ ↓↓↓
+        await prisma.aICardContent.create({
+          data: {
+            cardId: newCard.id, // 作成されたカードの ID を指定
+            contentType: AiContentType.EXPLANATION, // Enum を使用
+            language: explanationLanguage,
+            content: explanationContent,
+          },
+        });
+        console.log(
+          `[Card Service] Explanation (${explanationLanguage}) saved for card ${newCard.id}.`,
+        );
+        // ↑↑↑ ★★★ 修正ここまで ★★★ ↑↑↑
+      }
+    } catch (aiError) {
+      // AI エラーはログに残すが、カード作成は続行
+      console.error(
+        `[Card Service] Failed to generate/save explanation for card ${newCard.id}. Error:`,
+        aiError,
+      );
+    }
+
+    // 4. Generate Translation (English to Japanese)
+    try {
+      const sourceLanguage = "en"; // ★仮定
+      const targetLanguage = "ja"; // ★仮定
+      console.log(
+        `[Card Service] Attempting to generate translation for card ${newCard.id}, ${sourceLanguage} -> ${targetLanguage}`,
+      );
+      const translationContent = await generateTranslation(
+        front,
+        sourceLanguage,
+        targetLanguage,
+      );
+
+      if (translationContent) {
+        // ↓↓↓ ★★★ ここも修正: prisma.aICardContent.create を使う ★★★ ↓↓↓
+        await prisma.aICardContent.create({
+          data: {
+            cardId: newCard.id,
+            contentType: AiContentType.TRANSLATION, // Enum を使用
+            language: targetLanguage, // 翻訳先の言語コード
+            content: translationContent,
+          },
+        });
+        console.log(
+          `[Card Service] Translation (${targetLanguage}) saved for card ${newCard.id}.`,
+        );
+        // ↑↑↑ ★★★ 修正ここまで ★★★ ↑↑↑
+      }
+    } catch (aiError) {
+      // AI エラーはログに残すが、カード作成は続行
+      console.error(
+        `[Card Service] Failed to generate/save translation for card ${newCard.id}. Error:`,
+        aiError,
+      );
+    }
+
+    // 5. Return the initially created card object
+    //   (aiContents を含まない Card オブジェクト)
     return newCard;
   } catch (error) {
-    // Re-throw known application errors
+    // Handle errors from initial deck check or prisma.card.create (変更なし)
     if (error instanceof NotFoundError || error instanceof PermissionError) {
       throw error;
     }
-    // Handle other potential errors
-    console.error(`Database error creating card in deck ${deckId} by user ${userId}:`, error);
-    throw new DatabaseError('Failed to create card due to a database error.', error instanceof Error ? error : undefined);
+    console.error(
+      `Database error creating card in deck ${deckId} by user ${userId}:`,
+      error,
+    );
+    throw new DatabaseError(
+      "Failed to create card due to a database error.",
+      error instanceof Error ? error : undefined,
+    );
   }
 };
 /**
@@ -3896,7 +4391,11 @@ export const createCard = async (userId: string, data: { deckId: string; front: 
  * @throws {PermissionError} If the user does not own the deck the card belongs to.
  * @throws {DatabaseError} If any other database error occurs.
  */
-export const deleteCard = async (userId: string, deckId: string, cardId: string): Promise<void> => {
+export const deleteCard = async (
+  userId: string,
+  deckId: string,
+  cardId: string,
+): Promise<void> => {
   try {
     // 1. Verify card existence and ownership via the deck
     // Use findFirstOrThrow to ensure the card exists and belongs to the user's deck.
@@ -3917,28 +4416,36 @@ export const deleteCard = async (userId: string, deckId: string, cardId: string)
         id: cardId,
       },
     });
-
   } catch (error: unknown) {
     // Handle Prisma's specific 'RecordNotFound' error (P2025) and our NotFoundError
     let isPrismaNotFoundError = false;
-    if (typeof error === 'object' && error !== null && 'code' in error) {
-        isPrismaNotFoundError = (error as { code?: unknown }).code === 'P2025';
+    if (typeof error === "object" && error !== null && "code" in error) {
+      isPrismaNotFoundError = (error as { code?: unknown }).code === "P2025";
     }
 
     if (isPrismaNotFoundError || error instanceof NotFoundError) {
-        // P2025 can mean either the card doesn't exist OR the deck/user condition failed.
-        // We treat both as a NotFound or Permission issue from the client's perspective.
-        // A more specific check could be done by querying the card first, then the deck,
-        // but findFirstOrThrow is more concise for this combined check.
-      throw new NotFoundError(`Card with ID ${cardId} not found or user does not have permission.`);
+      // P2025 can mean either the card doesn't exist OR the deck/user condition failed.
+      // We treat both as a NotFound or Permission issue from the client's perspective.
+      // A more specific check could be done by querying the card first, then the deck,
+      // but findFirstOrThrow is more concise for this combined check.
+      throw new NotFoundError(
+        `Card with ID ${cardId} not found or user does not have permission.`,
+      );
     }
     // Re-throw known application errors (though findFirstOrThrow handles NotFound implicitly)
-    if (error instanceof PermissionError) { // Keep this in case other permission logic is added
+    if (error instanceof PermissionError) {
+      // Keep this in case other permission logic is added
       throw error;
     }
     // Handle other potential database errors
-    console.error(`Database error deleting card ${cardId} from deck ${deckId} by user ${userId}:`, error);
-    throw new DatabaseError('Failed to delete card due to a database error.', error instanceof Error ? error : undefined);
+    console.error(
+      `Database error deleting card ${cardId} from deck ${deckId} by user ${userId}:`,
+      error,
+    );
+    throw new DatabaseError(
+      "Failed to delete card due to a database error.",
+      error instanceof Error ? error : undefined,
+    );
   }
 };
 /**
@@ -3956,8 +4463,9 @@ export const updateCard = async (
   userId: string,
   deckId: string,
   cardId: string,
-  data: CardUpdatePayload // Use Zod payload type
-): Promise<Result<Card, AppError>> => { // Return Result type with direct Card
+  data: CardUpdatePayload, // Use Zod payload type
+): Promise<Result<Card, AppError>> => {
+  // Return Result type with direct Card
 
   // 1. Verify card existence and ownership via the deck using findFirst
   const card = await prisma.card.findFirst({
@@ -3968,14 +4476,16 @@ export const updateCard = async (
         userId: userId,
       },
     },
-    select: { id: true } // Only need to confirm existence and ownership
+    select: { id: true }, // Only need to confirm existence and ownership
   });
 
   if (!card) {
     // Card not found or user doesn't have permission for this deck/card
     return {
       ok: false,
-      error: new NotFoundError(`Card with ID ${cardId} not found or user does not have permission for deck ${deckId}.`)
+      error: new NotFoundError(
+        `Card with ID ${cardId} not found or user does not have permission for deck ${deckId}.`,
+      ),
     };
   }
 
@@ -4009,14 +4519,19 @@ export const updateCard = async (
 
     // 4. Return success result
     return { ok: true, value: updatedCard };
-
   } catch (error: unknown) {
     // Handle potential database errors during the update operation
-    console.error(`Database error updating card ${cardId} in deck ${deckId} by user ${userId}:`, error);
+    console.error(
+      `Database error updating card ${cardId} in deck ${deckId} by user ${userId}:`,
+      error,
+    );
     // Return a DatabaseError Result
     return {
       ok: false,
-      error: new DatabaseError('Failed to update card due to a database error.', error instanceof Error ? error : undefined)
+      error: new DatabaseError(
+        "Failed to update card due to a database error.",
+        error instanceof Error ? error : undefined,
+      ),
     };
   }
 };
@@ -4187,56 +4702,98 @@ export const updateDeck = async (
 
 ## File: types/api.types.ts
 ```typescript
-import { type Deck as PrismaDeck, type Card as PrismaCard } from '../../node_modules/.prisma/client'; // Use relative path based on schema output
-import { type DeckCreatePayload as DeckCreatePayloadFromZod, type DeckUpdatePayload as DeckUpdatePayloadFromZod } from '@/lib/zod'; // Assuming '@/lib/zod' is the correct alias or relative path
+// src/types/api.types.ts (AICardContent 導入 + DeckApiResponse 修正版)
+
+// ↓↓↓ Prisma Client から必要な型や Enum を直接インポート ↓↓↓
+// Import Prisma generated types using relative path
+// Revert to named imports using relative path after confirming types exist in index.d.ts
+import {
+  type Deck as PrismaDeck,
+  type Card as PrismaCard,
+  type AICardContent as PrismaAICardContent,
+  type AiContentType,
+} from "../../node_modules/.prisma/client";
+
+// Zod から Payload 型をインポート (変更なし)
+// Corrected import path from 'lib/zod' to '../lib/zod'
+import {
+  type DeckCreatePayload as DeckCreatePayloadFromZod,
+  type DeckUpdatePayload as DeckUpdatePayloadFromZod,
+} from "../lib/zod";
 
 /**
  * Payload for creating a new deck (POST /api/decks).
- * Re-exported from the Zod schema definition.
  */
 export type DeckCreatePayload = DeckCreatePayloadFromZod;
 
 /**
  * Payload for updating an existing deck (PUT /api/decks/{deckId}).
- * Re-exported from the Zod schema definition.
  */
 export type DeckUpdatePayload = DeckUpdatePayloadFromZod;
 
+// --- ↓↓↓ 新しい型定義: AICardContent の API レスポンス ↓↓↓ ---
 /**
- * Structure of a deck object returned by the API (GET /api/decks, POST /api/decks success).
- * Based on Prisma's Deck model, but only includes fields exposed via the API.
+ * Structure of an AI-generated content object returned within a Card object by the API.
+ * Represents a piece of content like an explanation or translation for a specific language.
  */
+export type AICardContentApiResponse = Pick<
+  PrismaAICardContent, // Use alias
+  "id" | "contentType" | "language" | "content" | "createdAt" | "updatedAt"
+  // cardId は CardApiResponse にネストされるため通常は含めない
+>;
+// --- ↑↑↑ 新しい型定義ここまで ↑↑↑ ---
+
+// --- ↓↓↓ CardApiResponse 型を修正 ↓↓↓ ---
 /**
- * Structure of a card object returned within the Deck detail API response.
+ * Structure of a card object returned by the API.
+ * Includes associated AI-generated content in the `aiContents` array.
+ * Excludes fields like `explanation`, `translation` which are now managed within `aiContents`.
  */
 export type CardApiResponse = Pick<
-  PrismaCard,
-  'id' | 'front' | 'back' | 'createdAt' | 'updatedAt' | 'deckId' | 'interval' | 'easeFactor' | 'nextReviewAt'
-  // Include fields needed by components like CardList
->;
-
-
-export type DeckApiResponse = Pick<
-  PrismaDeck,
-  'id' | 'name' | 'description' | 'createdAt' | 'updatedAt'
-  // Exclude 'userId' or other internal fields
+  PrismaCard, // Use alias
+  // Card の基本フィールドを選択
+  | "id"
+  | "front"
+  | "back"
+  | "deckId"
+  | "createdAt"
+  | "updatedAt"
+  | "interval"
+  | "easeFactor"
+  | "nextReviewAt"
+  | "frontAudioUrl"
+  | "backAudioUrl"
+  // explanation, translation は削除された
 > & {
-  cards: CardApiResponse[]; // Include the array of cards
+  // aiContents 配列を追加
+  aiContents: AICardContentApiResponse[];
 };
+// --- ↑↑↑ CardApiResponse 型修正ここまで ↑↑↑ ---
+
+// --- ↓↓↓ DeckApiResponse 型を修正 (cards 配列を削除) ↓↓↓ ---
+/**
+ * Structure of a deck object returned by the API (e.g., GET /api/decks/{deckId}).
+ * Contains only core deck information, excluding the list of cards.
+ * The list of cards for a deck should be fetched via the dedicated cards endpoint.
+ */
+export type DeckApiResponse = Pick<
+  PrismaDeck, // Use alias
+  "id" | "name" | "description" | "createdAt" | "updatedAt" | "userId" // userId も API 設計に応じて含めるか検討
+  // 'cards' プロパティは削除
+>;
+// --- ↑↑↑ DeckApiResponse 型修正ここまで ↑↑↑ ---
 
 /**
- * Standard error response structure for API errors.
+ * Standard error response structure for API errors. (変更なし)
  */
 export type ApiErrorResponse = {
-  /** A machine-readable error code (e.g., 'VALIDATION_ERROR', 'RESOURCE_NOT_FOUND'). */
-  error: string;
-  /** A user-friendly message describing the error. */
+  error: string; // Consider using a stricter type based on ERROR_CODES
   message: string;
-  /** Optional additional details about the error (e.g., validation failures). */
   details?: unknown;
 };
+
 /**
- * Structure for pagination metadata returned by the API.
+ * Structure for pagination metadata returned by the API. (変更なし)
  */
 export interface PaginationMeta {
   offset: number;
@@ -4249,20 +4806,25 @@ export interface PaginationMeta {
   };
 }
 
+// --- PaginatedDecksResponse (変更なし、ただし data の型は修正後の DeckApiResponse に依存) ---
 /**
- * Structure for the paginated response for decks.
+ * Structure for the paginated response for decks. Contains core deck info only.
  */
 export interface PaginatedDecksResponse {
-  data: DeckApiResponse[];
+  data: DeckApiResponse[]; // cards を含まない DeckApiResponse の配列
   pagination: PaginationMeta;
 }
+
+// --- PaginatedCardsResponse (data の型が更新された CardApiResponse を参照) ---
 /**
- * Structure for the paginated response for cards.
+ * Structure for the paginated response for cards. Contains Card objects with their associated aiContents.
  */
 export interface PaginatedCardsResponse {
-  data: CardApiResponse[];
+  data: CardApiResponse[]; // aiContents を含む CardApiResponse の配列
   pagination: PaginationMeta;
 }
+
+export type { AiContentType }; // ← この行を追加
 ```
 
 ## File: types/index.ts

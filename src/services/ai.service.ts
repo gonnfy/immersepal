@@ -1,32 +1,73 @@
-// src/services/ai.service.ts
+// src/services/ai.service.ts (デバッグログ追加後の完全版)
 
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
-import { VertexAI } from "@google-cloud/vertexai";
+// Import GenerateContentResult along with existing imports
+import { VertexAI, GenerateContentRequest, GenerateContentResult } from "@google-cloud/vertexai";
 import { Storage } from "@google-cloud/storage";
 import {
   AppError,
   ExternalApiError,
-  isAppError,
+  isAppError, // isAppError をインポート (generateExplanation, generateTranslation で使用)
   ERROR_CODES,
 } from "@/lib/errors";
-// クライアント初期化 (前回の指示通り)
+
+// クライアント初期化
 let ttsClient: TextToSpeechClient | null = null;
 let storage: Storage | null = null;
 let vertexAI: VertexAI | null = null;
 let bucketName: string = "";
+let vertexAiModelName: string = "";
+let vertexAiRegion: string = ""; // Add variable for region
+let ttsVoiceName: string = ""; // Add variable for TTS voice
 
 try {
+  // --- ↓↓↓ デバッグログ追加 ↓↓↓ ---
+  const projectId = process.env.GCP_PROJECT_ID || '';
+  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || 'Not Set';
+  // --- ↑↑↑ デバッグログ追加ここまで ↑↑↑
+
+  // --- Make Region Configurable ---
+  const defaultRegion = 'us-central1'; // Changed default region
+  vertexAiRegion = process.env.VERTEX_AI_REGION || defaultRegion;
+  console.log("--- AI Service Initialization ---");
+  console.log(`Attempting to initialize Google Cloud clients.`);
+  console.log(`Using GCP_PROJECT_ID: "${projectId}"`);
+  console.log(`Using GOOGLE_APPLICATION_CREDENTIALS: "${credentialsPath}"`);
+  // --- Update Log for Region ---
+  console.log(`Using Vertex AI Region: "${vertexAiRegion}" ${!process.env.VERTEX_AI_REGION ? '(Default)' : '(From Env Var)'}`);
+  if (!projectId || credentialsPath === 'Not Set') {
+       console.error("!!! CRITICAL: GCP_PROJECT_ID or GOOGLE_APPLICATION_CREDENTIALS seems missing or empty in .env.local !!!");
+  }
+
+  // TextToSpeechClient と Storage の初期化 (変更なし)
   ttsClient = new TextToSpeechClient();
   storage = new Storage();
+
+  // VertexAI クライアントの初期化 (Use configured region)
   vertexAI = new VertexAI({
-    project: process.env.GCP_PROJECT_ID || "",
-    location: "asia-northeast1",
+    project: projectId,
+    location: vertexAiRegion, // Use configured region
   });
-  bucketName = process.env.GCS_BUCKET_NAME || "";
+
+  // GCS バケット名の取得 (変更なし)
+  bucketName = process.env.GCS_BUCKET_NAME || "gemini-2.0-flash-001";
   if (!process.env.GCP_PROJECT_ID) console.warn("GCP_PROJECT_ID missing.");
   if (!bucketName && storage) console.warn("GCS_BUCKET_NAME missing.");
+
+  // Determine Vertex AI model name
+  const fallbackModel = ""; // Changed fallback model to latest alias
+  vertexAiModelName = process.env.VERTEX_AI_MODEL_NAME || fallbackModel;
+  console.log(`Using Vertex AI Model: "${vertexAiModelName}" ${!process.env.VERTEX_AI_MODEL_NAME ? '(Fallback)' : '(From Env Var)'}`);
+
+  // --- Make TTS Voice Configurable ---
+  const defaultTtsVoice = "ja-JP-Wavenet-B";
+  ttsVoiceName = process.env.TTS_VOICE_NAME || defaultTtsVoice;
+  console.log(`Using TTS Voice: "${ttsVoiceName}" ${!process.env.TTS_VOICE_NAME ? '(Default)' : '(From Env Var)'}`);
+
+
 } catch (error) {
   console.error("Failed to initialize Google Cloud clients.", error);
+  // 初期化失敗時はクライアントを null に設定 (変更なし)
   ttsClient = null;
   storage = null;
   vertexAI = null;
@@ -34,15 +75,12 @@ try {
 
 /**
  * Generates TTS audio from text, saves it to GCS, and returns a Signed URL.
- * @param text The text to synthesize.
- * @param gcsFilename The desired filename (without extension) to save on GCS.
- * @returns A promise resolving to the Signed URL for the audio file, or null on error.
+ * (Uses configured TTS voice)
  */
 export const generateTtsAudio = async (
   text: string,
   gcsFilename: string,
 ): Promise<string | null> => {
-  // クライアントや必須引数のチェック
   if (!ttsClient || !storage || !bucketName) {
     console.error(
       "generateTtsAudio: TTS client, Storage client, or Bucket Name is not initialized.",
@@ -53,18 +91,14 @@ export const generateTtsAudio = async (
     console.error("generateTtsAudio: Missing text or filename.");
     return null;
   }
-  console.log(`[AI Service] Generating TTS for filename: ${gcsFilename}`);
-
+  console.log(`[AI Service] Generating TTS for filename: ${gcsFilename} using voice ${ttsVoiceName}`); // Log voice used
   try {
-    // 1. Text-to-Speech リクエスト作成
     const request = {
       input: { text: text },
-      // 必要に応じて voice を変更してください
-      voice: { languageCode: "ja-JP", name: "ja-JP-Wavenet-B" },
+      // --- Use configured TTS voice ---
+      voice: { languageCode: "ja-JP", name: ttsVoiceName },
       audioConfig: { audioEncoding: "MP3" as const },
     };
-
-    // 2. 音声合成 API 呼び出し
     console.log(`[AI Service] Calling synthesizeSpeech...`);
     const [response] = await ttsClient.synthesizeSpeech(request);
     const audioContent = response.audioContent;
@@ -75,59 +109,43 @@ export const generateTtsAudio = async (
       return null;
     }
     console.log(`[AI Service] Speech synthesized successfully.`);
-
-    // 3. GCS にアップロード
     const bucket = storage.bucket(bucketName);
-    const filePath = `tts-audio/${gcsFilename}.mp3`; // バケット内のパス
+    const filePath = `tts-audio/${gcsFilename}.mp3`;
     const file = bucket.file(filePath);
-
     console.log(
       `[AI Service] Uploading TTS audio to gs://${bucketName}/${filePath}`,
     );
-    // Buffer を直接 save する
     await file.save(audioContent, {
-      metadata: { contentType: "audio/mpeg" }, // MP3 の MIME タイプ
-      // resumable: false, // 小さなファイルなら不要なことが多い
+      metadata: { contentType: "audio/mpeg" },
     });
     console.log(`[AI Service] File uploaded successfully.`);
-
-    // 4. 署名付き URL (Signed URL) を生成 ★★★ file.makePublic() の代わり ★★★
     console.log(`[AI Service] Generating Signed URL...`);
     const expiresDate = new Date();
-    expiresDate.setFullYear(expiresDate.getFullYear() + 100); // 有効期限を約100年に設定 (事実上の無期限)
-
+    expiresDate.setFullYear(expiresDate.getFullYear() + 100);
     const [signedUrl] = await file.getSignedUrl({
-      action: "read", // 読み取り用 URL
-      expires: expiresDate, // 有効期限
-      // version: 'v4', // v4 を明示的に指定することも可能
+      action: "read",
+      expires: expiresDate,
     });
-
     console.log(`[AI Service] Signed URL generated.`);
-    return signedUrl; // 生成された URL を返す
+    return signedUrl;
   } catch (error) {
     console.error(
       `Error in generateTtsAudio for filename ${gcsFilename}:`,
       error,
     );
-    return null; // エラー時は null を返す
+    return null;
   }
 };
 
-// --- (generateExplanation と generateTranslation はまだ雛形のまま) ---
+
 /**
- * Generates an explanation for a given text using a specified Gemini model.
- * @param textToExplain - The text (e.g., a word or phrase) to generate an explanation for.
- * @param targetLanguage - The language of the text to explain (e.g., 'en', 'ja'). Helps tailor the prompt.
- * @param modelName - The specific Gemini model to use (e.g., 'gemini-1.5-flash-001'). Defaults to 'gemini-1.5-flash-001'.
- * @returns A promise resolving to the generated explanation string.
- * @throws {ExternalApiError} If the Vertex AI client is not initialized or the API call fails or returns invalid content.
+ * Generates an explanation for a given text using a specified Gemini model via streaming.
  */
 export const generateExplanation = async (
   textToExplain: string,
-  targetLanguage: string, // 例: 'en', 'ja' など、プロンプト調整用
-  modelName: string = "gemini-1.5-flash-002", // デフォルトモデル
+  targetLanguage: string,
 ): Promise<string> => {
-  // ★ エラー時は throw するため、戻り値は string (null を返さない)
+  // Remove modelName parameter, use configured vertexAiModelName
   if (!vertexAI) {
     console.error("generateExplanation: Vertex AI client is not initialized.");
     throw new ExternalApiError("Vertex AI client failed to initialize.");
@@ -136,61 +154,65 @@ export const generateExplanation = async (
     console.warn(
       "generateExplanation: textToExplain is empty, returning empty string.",
     );
-    return ""; // 空文字の場合は空文字を返す
+    return "";
   }
 
   console.log(
-    `[AI Service] Generating explanation for: "${textToExplain}" using model ${modelName}`,
+    `[AI Service] Generating explanation for: "${textToExplain}" using model ${vertexAiModelName} (streaming)`, // Indicate streaming
   );
 
   try {
-    // 1. Get the generative model instance
-    const generativeModel = vertexAI.getGenerativeModel({
-      model: modelName, // generationConfig: { ... }, // 必要に応じて設定
-      // safetySettings: { ... },  // 必要に応じて設定
-    }); // 2. Construct the prompt
-
-    const prompt = `Explain the meaning and usage of the ${targetLanguage} word/phrase "${textToExplain}" concisely for a language learner. Keep it simple and clear.`; // 3. Send the prompt to the model
-
-    const request = {
+    const generativeModel = vertexAI.getGenerativeModel({ // Use standard method
+      model: vertexAiModelName,
+    });
+    const prompt = `Explain the meaning and usage of the ${targetLanguage} word/phrase "${textToExplain}" concisely for a language learner. Keep it simple and clear.`;
+    const request: GenerateContentRequest = { // Type the request
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     };
 
-    console.log(`[AI Service] Sending prompt to Vertex AI...`);
-    const resp = await generativeModel.generateContent(request); // 4. Process the response - より安全な Optional Chaining を使用
+    console.log(`[AI Service] Sending prompt to Vertex AI (streaming)...`);
+    const streamingResp = await generativeModel.generateContentStream(request);
 
-    const generatedText =
-      resp.response?.candidates?.[0]?.content?.parts?.[0]?.text; // 厳密にチェックし、テキストが得られなかった場合はエラーとする
+    // --- Aggregate streamed response ---
+    let aggregatedText = "";
+    for await (const item of streamingResp.stream) {
+        // Check if item and necessary properties exist
+        const partText = item?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (typeof partText === 'string') {
+            aggregatedText += partText;
+        } else {
+             console.warn("[AI Service] Received non-text part in stream:", JSON.stringify(item, null, 2));
+        }
+    }
+    // --- End aggregation ---
 
+    // Validate aggregated response
+    const generatedText = aggregatedText; // Use aggregated text
     if (typeof generatedText !== "string" || generatedText.length === 0) {
       console.warn(
-        "[AI Service] Received no valid text content from Vertex AI response:", // デバッグ用にレスポンス全体を整形してログ出力 (Prettier が整形してくれるはず)
-        JSON.stringify(resp.response, null, 2),
+        "[AI Service] Received no valid text content from Vertex AI streaming response."
+        // Avoid logging potentially huge aggregated response if it failed validation
       );
       throw new ExternalApiError(
-        "Failed to generate explanation: No valid content received from Vertex AI.",
+        "Failed to generate explanation: No valid content received from Vertex AI stream.",
       );
     }
-
-    console.log(`[AI Service] Explanation generated successfully.`);
-    return generatedText.trim(); // 前後の空白を除去して返す
+    console.log(`[AI Service] Explanation generated successfully (streaming).`);
+    return generatedText.trim();
   } catch (error: unknown) {
     console.error(
-      `[AI Service] Error generating explanation for "${textToExplain}":`,
+      `[AI Service] Error generating explanation for "${textToExplain}" (streaming):`, // Indicate streaming in error
       error,
-    ); // エラーをラップして再スロー (API Route で handleApiError が処理)
-
+    );
     if (isAppError(error)) {
-      // 既に AppError (ExternalApiError を含む) ならそのままスロー
       throw error;
     } else {
-      // AppError でない場合は ExternalApiError にラップ
       const message =
         error instanceof Error
           ? error.message
-          : "Unknown error during Vertex AI call."; // 修正済みの ExternalApiError コンストラクタを使用
+          : "Unknown error during Vertex AI call.";
       throw new ExternalApiError(
-        `Failed to generate explanation via Vertex AI: ${message}`,
+        `Failed to generate explanation via Vertex AI stream: ${message}`,
         error instanceof Error ? error : undefined,
       );
     }
@@ -198,39 +220,28 @@ export const generateExplanation = async (
 };
 
 /**
- * Translates text from a source language to a target language using a specified Gemini model.
- * @param textToTranslate - The text to translate.
- * @param sourceLanguage - The language code or name of the source text (e.g., 'en', 'English', 'ja', 'Japanese').
- * @param targetLanguageCode - The language code or name for the target translation (e.g., 'ja', 'Japanese', 'en', 'English').
- * @param modelName - The specific Gemini model to use (e.g., 'gemini-1.0-pro'). Defaults to 'gemini-1.0-pro'.
- * @returns A promise resolving to the translated text string.
- * @throws {AppError} If source or target language is missing.
- * @throws {ExternalApiError} If the Vertex AI client is not initialized or the API call fails or returns invalid content.
+ * Translates text from a source language to a target language using a specified Gemini model via streaming.
  */
 export const generateTranslation = async (
   textToTranslate: string,
-  sourceLanguage: string, // 例: 'English' または 'en'
-  targetLanguageCode: string, // 例: 'Japanese' または 'ja'
-  modelName: string = "gemini-1.5-flash-002", // 前回成功したモデルをデフォルトに
+  sourceLanguage: string,
+  targetLanguageCode: string,
 ): Promise<string> => {
-  // クライアントのチェック
+  // Remove modelName parameter, use configured vertexAiModelName
   if (!vertexAI) {
     console.error("generateTranslation: Vertex AI client is not initialized.");
     throw new ExternalApiError("Vertex AI client failed to initialize.");
   }
-  // 入力テキストのチェック
   if (!textToTranslate) {
     console.warn(
       "generateTranslation: textToTranslate is empty, returning empty string.",
     );
-    return ""; // 空文字の場合は空文字を返す
+    return "";
   }
-  // 言語指定のチェック
   if (!sourceLanguage || !targetLanguageCode) {
     console.error(
       "generateTranslation: sourceLanguage or targetLanguageCode is missing.",
     );
-    // バリデーションエラーとして AppError を throw
     throw new AppError(
       "Source and target language codes are required for translation.",
       400,
@@ -239,69 +250,129 @@ export const generateTranslation = async (
   }
 
   console.log(
-    `[AI Service] Generating translation for: "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode} using model ${modelName}`,
+    `[AI Service] Generating translation for: "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode} using model ${vertexAiModelName} (streaming)`, // Indicate streaming
   );
 
   try {
-    // 1. モデルを取得
-    const generativeModel = vertexAI.getGenerativeModel({
-      model: modelName,
-      // 翻訳タスクに適した設定（任意）
-      // generationConfig: { temperature: 0.2 }, // 創造性より正確性重視
-      // safetySettings: { ... },
+    const generativeModel = vertexAI.getGenerativeModel({ // Use standard method
+      model: vertexAiModelName,
     });
-
-    // 2. 翻訳用のプロンプトを作成
-    // 指示を明確にするのがコツです
-    const prompt = `Translate the following text accurately from ${sourceLanguage} to ${targetLanguageCode}:\n\n"${textToTranslate}"\n\nTranslated text:`;
-
-    // 3. API リクエストを作成
-    const request = {
+    const prompt = `Translate the following text accurately from ${sourceLanguage} to ${targetLanguageCode}. Return only the translated text, without any introduction, explanation, or formatting like markdown.\n\nText to translate:\n"${textToTranslate}"\n\nTranslated text:`;
+    const request: GenerateContentRequest = { // Type the request
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     };
 
-    console.log(`[AI Service] Sending translation prompt to Vertex AI...`);
-    // 4. Vertex AI API 呼び出し
-    const resp = await generativeModel.generateContent(request);
+    console.log(`[AI Service] Sending translation prompt to Vertex AI (streaming)...`);
+    const streamingResp = await generativeModel.generateContentStream(request);
 
-    // 5. レスポンスから翻訳テキストを抽出
-    const translatedText =
-      resp.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+    // --- Aggregate streamed response ---
+    let aggregatedText = "";
+     for await (const item of streamingResp.stream) {
+        // Check if item and necessary properties exist
+        const partText = item?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (typeof partText === 'string') {
+            aggregatedText += partText;
+        } else {
+             console.warn("[AI Service] Received non-text part in stream:", JSON.stringify(item, null, 2));
+        }
+    }
+    // --- End aggregation ---
 
-    // 6. 結果の検証
+    // Validate aggregated response
+    const translatedText = aggregatedText; // Use aggregated text
     if (typeof translatedText !== "string") {
-      // 結果が文字列でない場合はエラー
       console.warn(
-        "[AI Service] Received no valid text content from Vertex AI translation response:",
-        JSON.stringify(resp.response, null, 2),
+        "[AI Service] Received no valid text content from Vertex AI translation streaming response."
+         // Avoid logging potentially huge aggregated response if it failed validation
       );
       throw new ExternalApiError(
-        "Failed to generate translation: No valid content received from Vertex AI.",
+        "Failed to generate translation: No valid content received from Vertex AI stream.",
       );
     }
-    // 空文字の翻訳結果を許容するかどうかは要件次第ですが、一旦許容します。
-
-    console.log(`[AI Service] Translation generated successfully.`);
-    // 7. 結果を返す (前後の空白を除去)
-    return translatedText.trim();
+    console.log(`[AI Service] Translation generated successfully (streaming).`);
+    return translatedText.trim().replace(/^"|"$/g, ''); // Keep quote removal
   } catch (error: unknown) {
-    // 8. エラーハンドリング
     console.error(
-      `[AI Service] Error generating translation for "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode}:`,
+      `[AI Service] Error generating translation for "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode} (streaming):`, // Indicate streaming in error
       error,
     );
-
-    // エラーをラップして再スロー
     if (isAppError(error)) {
-      throw error; // AppError はそのまま throw
+      throw error;
     } else {
-      // それ以外のエラーは ExternalApiError にラップ
       const message =
         error instanceof Error
           ? error.message
           : "Unknown error during Vertex AI call.";
       throw new ExternalApiError(
-        `Failed to generate translation via Vertex AI: ${message}`,
+        `Failed to generate translation via Vertex AI stream: ${message}`,
+        error instanceof Error ? error : undefined,
+      );
+    }
+  }
+};
+
+/**
+ * Generates text content based on a prompt using the configured Vertex AI model (non-streaming).
+ */
+export const generateText = async (
+  prompt: string,
+): Promise<string> => {
+  if (!vertexAI) {
+    console.error("generateText: Vertex AI client is not initialized.");
+    throw new ExternalApiError("Vertex AI client failed to initialize.");
+  }
+  if (!prompt) {
+    console.warn("generateText: prompt is empty, returning empty string.");
+    return "";
+  }
+
+  console.log(
+    `[AI Service] Generating text using model ${vertexAiModelName} (non-streaming)`,
+  );
+
+  try {
+    const generativeModel = vertexAI.getGenerativeModel({
+      model: vertexAiModelName,
+    });
+
+    const request: GenerateContentRequest = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    };
+
+    console.log(`[AI Service] Sending prompt to Vertex AI (non-streaming)...`);
+    // Use non-streaming generateContent
+    const result: GenerateContentResult = await generativeModel.generateContent(request);
+
+    // Extract text from the response, checking structure carefully
+    const generatedText = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (typeof generatedText !== "string" || generatedText.length === 0) {
+      console.warn(
+        "[AI Service] Received no valid text content from Vertex AI non-streaming response.",
+        JSON.stringify(result?.response, null, 2) // Log the response structure for debugging
+      );
+      throw new ExternalApiError(
+        "Failed to generate text: No valid content received from Vertex AI.",
+      );
+    }
+
+    console.log(`[AI Service] Text generated successfully (non-streaming).`);
+    return generatedText.trim();
+
+  } catch (error: unknown) {
+    console.error(
+      `[AI Service] Error generating text (non-streaming):`,
+      error,
+    );
+    if (isAppError(error)) {
+      throw error;
+    } else {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unknown error during Vertex AI call.";
+      throw new ExternalApiError(
+        `Failed to generate text via Vertex AI: ${message}`,
         error instanceof Error ? error : undefined,
       );
     }
