@@ -1,66 +1,59 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { handleApiError, ValidationError } from "@/lib/errors"; // 必要に応じて AppError もインポート
-import { generateExplanation } from "@/services/ai.service"; // 作成したサービス関数をインポート
+// src/app/(api)/api/test-explanation/route.ts (Result パターン対応版)
 
-// リクエストボディのスキーマ定義
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { handleApiError, ValidationError } from '@/lib/errors';
+import { generateExplanation } from '@/services/ai.service'; // サービス関数 (Result を返す版)
+import { type Result } from '@/types';
+import { type AppError } from '@/lib/errors';
+
+// Zod スキーマ (変更なし)
 const testExplanationSchema = z.object({
-  text: z.string().min(1, "Text to explain cannot be empty."),
-  language: z
-    .string()
-    .min(2, "Language code must be at least 2 characters.")
-    .max(10), // 簡単な言語コードチェック
-  // 必要なら modelName もリクエスト可能にする
-  // modelName: z.string().optional(),
+  text: z.string().min(1, 'Text to explain cannot be empty.'),
+  language: z.string().min(2, 'Language code must be at least 2 characters.').max(10),
 });
 
-// リクエストボディの型
 type TestExplanationPayload = z.infer<typeof testExplanationSchema>;
 
-/**
- * POST handler for testing the generateExplanation service.
- * Expects a JSON body with "text" and "language".
- */
 export async function POST(request: Request) {
   try {
-    // 1. Parse Request Body
+    // 1. Parse Request Body (変更なし)
     let body: TestExplanationPayload;
     try {
-      // ★ ボディが空の場合も考慮して unknown で受ける ★
       const rawBody: unknown = await request.json();
-      // ★ スキーマでパース＆バリデーション ★
       const validation = testExplanationSchema.safeParse(rawBody);
       if (!validation.success) {
-        // バリデーションエラーの詳細を返す
-        throw new ValidationError(
-          "Invalid request body.",
-          validation.error.flatten(),
-        );
+        throw new ValidationError('Invalid request body.', validation.error.flatten());
       }
-      body = validation.data; // 型アサーションなしでOK
+      body = validation.data;
     } catch (e) {
-      // JSON パースエラーまたは Zod バリデーション以外のエラー
-      if (e instanceof ValidationError) {
-        throw e; // そのままスローして handleApiError で処理
-      }
-      console.error("Error parsing or validating request body:", e);
-      // JSON パース失敗時などは ValidationError を new して投げる
-      throw new ValidationError("Invalid JSON body or structure.");
+      if (e instanceof ValidationError) { throw e; }
+      console.error('Error parsing or validating request body:', e);
+      throw new ValidationError('Invalid JSON body or structure.');
     }
 
-    // 2. Call the Service Function
+    // --- ↓↓↓ サービス呼び出しと Result 処理を修正 ↓↓↓ ---
     const { text, language } = body;
-    // const model = body.modelName; // modelName を受け取る場合
 
-    // generateExplanation は成功すれば文字列を、失敗すれば AppError を throw する想定
-    const explanation = await generateExplanation(text, language /*, model */);
+    // 2. Call Service Function (returns Result)
+    const explanationResult: Result<string, AppError> = await generateExplanation(
+        text,
+        language
+    );
 
-    // 3. Success Response
-    return NextResponse.json({ success: true, explanation: explanation });
+    // 3. Check Result
+    if (!explanationResult.ok) {
+        return handleApiError(explanationResult.error);
+    }
+
+    // 4. Success Response
+    return NextResponse.json({
+        success: true,
+        explanation: explanationResult.value // Use result.value
+    });
+    // --- ↑↑↑ 修正ここまで ↑↑↑ ---
+
   } catch (error: unknown) {
-    // 4. Error Handling (Centralized)
-    // generateExplanation が throw した AppError や、
-    // このハンドラ内で throw した ValidationError を処理
     return handleApiError(error);
   }
 }

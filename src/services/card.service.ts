@@ -131,129 +131,95 @@ export const getCardsByDeckId = async (
  * @throws {DatabaseError} If the initial card creation fails.
  **/
 
+// src/services/card.service.ts の createCard 関数 (Result処理修正版)
+
+/**
+ * Creates a new card, ensuring user ownership, and attempts to generate
+ * and save explanation/translation using the Result pattern returned by AI services.
+ * AI content generation failures are logged but do not prevent card creation.
+ */
 export const createCard = async (
   userId: string,
   data: { deckId: string; front: string; back: string },
 ): Promise<Card> => {
-  // 戻り値は Card のまま
   const { deckId, front, back } = data;
   let newCard: Card;
 
+  // --- 1 & 2: デッキ確認とカード作成 (エラーは throw する) ---
   try {
-    // 1. Verify deck existence and ownership (変更なし)
     const deck = await prisma.deck.findUnique({
       where: { id: deckId },
       select: { userId: true },
     });
 
-    if (!deck) {
-      throw new NotFoundError(`Deck with ID ${deckId} not found.`);
-    }
-    if (deck.userId !== userId) {
-      throw new PermissionError(
-        `User does not have permission to add cards to deck with ID ${deckId}.`,
-      );
-    }
+    if (!deck) { throw new NotFoundError(`Deck with ID ${deckId} not found.`); }
+    if (deck.userId !== userId) { throw new PermissionError(`User does not have permission to add cards to deck ${deckId}.`); }
 
-    // 2. Create the card in the database (変更なし)
     newCard = await prisma.card.create({
-      data: {
-        front,
-        back,
-        deckId,
-      },
+      data: { front, back, deckId },
     });
 
-    // --- AI コンテンツ生成・保存 ---
-
-    // 3. Generate Explanation (English)
-    try {
-      const explanationLanguage = "en"; // ★仮定
-      console.log(
-        `[Card Service] Attempting to generate explanation for card ${newCard.id}, lang: ${explanationLanguage}`,
-      );
-      const explanationContent = await generateExplanation(
-        front,
-        explanationLanguage,
-      );
-
-      if (explanationContent) {
-        // ↓↓↓ ★★★ ここを修正: prisma.aICardContent.create を使う ★★★ ↓↓↓
-        await prisma.aICardContent.create({
-          data: {
-            cardId: newCard.id, // 作成されたカードの ID を指定
-            contentType: AiContentType.EXPLANATION, // Enum を使用
-            language: explanationLanguage,
-            content: explanationContent,
-          },
-        });
-        console.log(
-          `[Card Service] Explanation (${explanationLanguage}) saved for card ${newCard.id}.`,
-        );
-        // ↑↑↑ ★★★ 修正ここまで ★★★ ↑↑↑
-      }
-    } catch (aiError) {
-      // AI エラーはログに残すが、カード作成は続行
-      console.error(
-        `[Card Service] Failed to generate/save explanation for card ${newCard.id}. Error:`,
-        aiError,
-      );
-    }
-
-    // 4. Generate Translation (English to Japanese)
-    try {
-      const sourceLanguage = "en"; // ★仮定
-      const targetLanguage = "ja"; // ★仮定
-      console.log(
-        `[Card Service] Attempting to generate translation for card ${newCard.id}, ${sourceLanguage} -> ${targetLanguage}`,
-      );
-      const translationContent = await generateTranslation(
-        front,
-        sourceLanguage,
-        targetLanguage,
-      );
-
-      if (translationContent) {
-        // ↓↓↓ ★★★ ここも修正: prisma.aICardContent.create を使う ★★★ ↓↓↓
-        await prisma.aICardContent.create({
-          data: {
-            cardId: newCard.id,
-            contentType: AiContentType.TRANSLATION, // Enum を使用
-            language: targetLanguage, // 翻訳先の言語コード
-            content: translationContent,
-          },
-        });
-        console.log(
-          `[Card Service] Translation (${targetLanguage}) saved for card ${newCard.id}.`,
-        );
-        // ↑↑↑ ★★★ 修正ここまで ★★★ ↑↑↑
-      }
-    } catch (aiError) {
-      // AI エラーはログに残すが、カード作成は続行
-      console.error(
-        `[Card Service] Failed to generate/save translation for card ${newCard.id}. Error:`,
-        aiError,
-      );
-    }
-
-    // 5. Return the initially created card object
-    //   (aiContents を含まない Card オブジェクト)
-    return newCard;
   } catch (error) {
-    // Handle errors from initial deck check or prisma.card.create (変更なし)
-    if (error instanceof NotFoundError || error instanceof PermissionError) {
-      throw error;
-    }
-    console.error(
-      `Database error creating card in deck ${deckId} by user ${userId}:`,
-      error,
-    );
-    throw new DatabaseError(
-      "Failed to create card due to a database error.",
-      error instanceof Error ? error : undefined,
-    );
+    if (error instanceof NotFoundError || error instanceof PermissionError) { throw error; }
+    console.error(`Database error during initial card creation for deck ${deckId} by user ${userId}:`, error);
+    throw new DatabaseError('Failed to create card due to a database error.', error instanceof Error ? error : undefined);
   }
+
+  // --- 3. AI 解説生成・保存 (Result パターン処理) ---
+  const explanationLanguage = 'en'; // TODO: Dynamic
+  console.log(`[Card Service] Attempting to generate explanation for card ${newCard.id}, lang: ${explanationLanguage}`);
+  const explanationResult = await generateExplanation(front, explanationLanguage);
+
+  // ↓↓↓ 必ず .ok でチェックしてから .value を使う ↓↓↓
+  if (explanationResult.ok) {
+    try {
+      await prisma.aICardContent.create({
+        data: {
+          cardId: newCard.id,
+          contentType: AiContentType.EXPLANATION,
+          language: explanationLanguage,
+          content: explanationResult.value, // ★ .value を使う
+        },
+      });
+      console.log(`[Card Service] Explanation (${explanationLanguage}) saved for card ${newCard.id}.`);
+    } catch (dbError) {
+      console.error(`[Card Service] Failed to save explanation for card ${newCard.id}. DB Error:`, dbError);
+    }
+  } else {
+    console.error(`[Card Service] Failed to generate explanation for card ${newCard.id}. Error:`, explanationResult.error.message, explanationResult.error.details ?? '');
+  }
+
+  // --- 4. AI 翻訳生成・保存 (Result パターン処理) ---
+  const sourceLanguage = 'en'; // TODO: Dynamic
+  const targetLanguage = 'ja'; // TODO: Dynamic
+  console.log(`[Card Service] Attempting to generate translation for card ${newCard.id}, ${sourceLanguage} -> ${targetLanguage}`);
+  const translationResult = await generateTranslation(front, sourceLanguage, targetLanguage);
+
+  // ↓↓↓ 必ず .ok でチェックしてから .value を使う ↓↓↓
+  if (translationResult.ok) {
+    try {
+      await prisma.aICardContent.create({
+        data: {
+          cardId: newCard.id,
+          contentType: AiContentType.TRANSLATION,
+          language: targetLanguage,
+          content: translationResult.value, // ★ .value を使う
+        },
+      });
+      console.log(`[Card Service] Translation (${targetLanguage}) saved for card ${newCard.id}.`);
+    } catch (dbError) {
+      console.error(`[Card Service] Failed to save translation for card ${newCard.id}. DB Error:`, dbError);
+    }
+  } else {
+    console.error(`[Card Service] Failed to generate translation for card ${newCard.id}. Error:`, translationResult.error.message, translationResult.error.details ?? '');
+  }
+
+  // 5. 最初に作成した Card オブジェクトを返す
+  return newCard;
 };
+
+// --- getCardsByDeckId, deleteCard, updateCard など他の関数 ... ---
+// (updateCard, updateDeck も Result を使うなら、同様の .ok チェックが必要です)
 /**
  * Deletes a specific card, ensuring user ownership.
  * @param userId - The ID of the user performing the deletion.
