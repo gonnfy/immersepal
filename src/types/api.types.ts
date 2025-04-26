@@ -1,53 +1,95 @@
-import { type Deck as PrismaDeck, type Card as PrismaCard } from '../../node_modules/.prisma/client'; // Use relative path based on schema output
-import { type DeckCreatePayload as DeckCreatePayloadFromZod, type DeckUpdatePayload as DeckUpdatePayloadFromZod } from '@/lib/zod'; // Assuming '@/lib/zod' is the correct alias or relative path
+// src/types/api.types.ts (AICardContent 導入 + DeckApiResponse 修正版)
+
+// ↓↓↓ Prisma Client から必要な型や Enum を直接インポート ↓↓↓
+// Import Prisma generated types using relative path
+// Revert to named imports using relative path after confirming types exist in index.d.ts
+import {
+  type Deck as PrismaDeck,
+  type Card as PrismaCard,
+  type AICardContent as PrismaAICardContent,
+  type AiContentType,
+} from "../../node_modules/.prisma/client";
+
+// Zod から Payload 型をインポート (変更なし)
+// Corrected import path from 'lib/zod' to '../lib/zod'
+import {
+  type DeckCreatePayload as DeckCreatePayloadFromZod,
+  type DeckUpdatePayload as DeckUpdatePayloadFromZod,
+} from "../lib/zod";
 
 /**
  * Payload for creating a new deck (POST /api/decks).
- * Re-exported from the Zod schema definition.
  */
 export type DeckCreatePayload = DeckCreatePayloadFromZod;
 
 /**
  * Payload for updating an existing deck (PUT /api/decks/{deckId}).
- * Re-exported from the Zod schema definition.
  */
 export type DeckUpdatePayload = DeckUpdatePayloadFromZod;
 
+// --- ↓↓↓ 新しい型定義: AICardContent の API レスポンス ↓↓↓ ---
 /**
- * Structure of a deck object returned by the API (GET /api/decks, POST /api/decks success).
- * Based on Prisma's Deck model, but only includes fields exposed via the API.
+ * Structure of an AI-generated content object returned within a Card object by the API.
+ * Represents a piece of content like an explanation or translation for a specific language.
  */
+export type AICardContentApiResponse = Pick<
+  PrismaAICardContent, // Use alias
+  "id" | "contentType" | "language" | "content" | "createdAt" | "updatedAt"
+  // cardId は CardApiResponse にネストされるため通常は含めない
+>;
+// --- ↑↑↑ 新しい型定義ここまで ↑↑↑ ---
+
+// --- ↓↓↓ CardApiResponse 型を修正 ↓↓↓ ---
 /**
- * Structure of a card object returned within the Deck detail API response.
+ * Structure of a card object returned by the API.
+ * Includes associated AI-generated content in the `aiContents` array.
+ * Excludes fields like `explanation`, `translation` which are now managed within `aiContents`.
  */
 export type CardApiResponse = Pick<
-  PrismaCard,
-  'id' | 'front' | 'back' | 'createdAt' | 'updatedAt' | 'deckId' | 'interval' | 'easeFactor' | 'nextReviewAt'
-  // Include fields needed by components like CardList
->;
-
-
-export type DeckApiResponse = Pick<
-  PrismaDeck,
-  'id' | 'name' | 'description' | 'createdAt' | 'updatedAt'
-  // Exclude 'userId' or other internal fields
+  PrismaCard, // Use alias
+  // Card の基本フィールドを選択
+  | "id"
+  | "front"
+  | "back"
+  | "deckId"
+  | "createdAt"
+  | "updatedAt"
+  | "interval"
+  | "easeFactor"
+  | "nextReviewAt"
+  | "frontAudioUrl"
+  | "backAudioUrl"
+  // explanation, translation は削除された
 > & {
-  cards: CardApiResponse[]; // Include the array of cards
+  // aiContents 配列を追加
+  aiContents: AICardContentApiResponse[];
 };
+// --- ↑↑↑ CardApiResponse 型修正ここまで ↑↑↑ ---
+
+// --- ↓↓↓ DeckApiResponse 型を修正 (cards 配列を削除) ↓↓↓ ---
+/**
+ * Structure of a deck object returned by the API (e.g., GET /api/decks/{deckId}).
+ * Contains only core deck information, excluding the list of cards.
+ * The list of cards for a deck should be fetched via the dedicated cards endpoint.
+ */
+export type DeckApiResponse = Pick<
+  PrismaDeck, // Use alias
+  "id" | "name" | "description" | "createdAt" | "updatedAt" | "userId" // userId も API 設計に応じて含めるか検討
+  // 'cards' プロパティは削除
+>;
+// --- ↑↑↑ DeckApiResponse 型修正ここまで ↑↑↑ ---
 
 /**
- * Standard error response structure for API errors.
+ * Standard error response structure for API errors. (変更なし)
  */
 export type ApiErrorResponse = {
-  /** A machine-readable error code (e.g., 'VALIDATION_ERROR', 'RESOURCE_NOT_FOUND'). */
-  error: string;
-  /** A user-friendly message describing the error. */
+  error: string; // Consider using a stricter type based on ERROR_CODES
   message: string;
-  /** Optional additional details about the error (e.g., validation failures). */
   details?: unknown;
 };
+
 /**
- * Structure for pagination metadata returned by the API.
+ * Structure for pagination metadata returned by the API. (変更なし)
  */
 export interface PaginationMeta {
   offset: number;
@@ -60,17 +102,22 @@ export interface PaginationMeta {
   };
 }
 
+// --- PaginatedDecksResponse (変更なし、ただし data の型は修正後の DeckApiResponse に依存) ---
 /**
- * Structure for the paginated response for decks.
+ * Structure for the paginated response for decks. Contains core deck info only.
  */
 export interface PaginatedDecksResponse {
-  data: DeckApiResponse[];
+  data: DeckApiResponse[]; // cards を含まない DeckApiResponse の配列
   pagination: PaginationMeta;
 }
+
+// --- PaginatedCardsResponse (data の型が更新された CardApiResponse を参照) ---
 /**
- * Structure for the paginated response for cards.
+ * Structure for the paginated response for cards. Contains Card objects with their associated aiContents.
  */
 export interface PaginatedCardsResponse {
-  data: CardApiResponse[];
+  data: CardApiResponse[]; // aiContents を含む CardApiResponse の配列
   pagination: PaginationMeta;
 }
+
+export type { AiContentType }; // ← この行を追加

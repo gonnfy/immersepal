@@ -19,7 +19,7 @@ export async function GET(
       return NextResponse.json(errorResponse, { status: 401 });
     }
 
-    const { deckId } = await context.params; // Await params
+    const { deckId } = context.params; // Await params
 
     // Validate deckId format if necessary (e.g., using a regex or library)
     // Example: if (!isValidUUID(deckId)) { return NextResponse.json({ error: 'BAD_REQUEST', message: 'Invalid Deck ID format.' }, { status: 400 }); }

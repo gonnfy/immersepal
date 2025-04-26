@@ -62,11 +62,31 @@ export const ERROR_CODES = {
     }
   }
   
-  export class ExternalApiError extends AppError {
-      constructor(message: string = 'External API request failed.') {
-          super(message, 503, ERROR_CODES.EXTERNAL_API_FAILURE); // 503 Service Unavailable
-      }
+  // lib/errors.ts の ExternalApiError クラスを修正
+
+// (他の import やクラス定義はそのまま)
+
+export class ExternalApiError extends AppError {
+  /**
+   * Constructs an ExternalApiError.
+   * @param message - Human-readable description. Defaults to 'External API request failed.'.
+   * @param originalError - Optional: The original error caught.
+   * @param details - Optional: Additional details (like safety ratings). // ← details を追加
+   */
+  constructor(
+    message: string = 'External API request failed.',
+    originalError?: Error,
+    details?: unknown // ★ オプションの details 引数を追加 ★
+  ) {
+    // ★ AppError の第4引数 (details) に渡すように修正 ★
+    //    details があればそれを、なければ originalError を渡す例
+    super(message, 503, ERROR_CODES.EXTERNAL_API_FAILURE, details ?? originalError);
   }
+}
+
+// (他のエラークラスや isAppError などはそのまま)
+    
+
   
   // ★ 予期せぬデータベースエラーなどに使用 ★
   export class DatabaseError extends AppError {

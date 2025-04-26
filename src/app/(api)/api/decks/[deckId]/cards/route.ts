@@ -18,7 +18,7 @@ export async function POST(
   context: { params: { deckId: string } }
 ) {
   try {
-    const { deckId } = context.params;
+    const { deckId } = await context.params;
 
     if (!deckId) {
       return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });

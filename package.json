@@ -11,7 +11,8 @@
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
     "@google-cloud/text-to-speech": "^6.0.1",
-    "@google-cloud/vertexai": "^1.9.3",
+    "@google-cloud/vertexai": "^1.10.0",
+    "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^5.0.1",
     "@prisma/client": "^6.6.0",
     "@supabase/ssr": "^0.6.1",
@@ -22,6 +23,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.55.0",
+    "uuid": "^11.1.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -33,12 +35,15 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
     "@vitest/ui": "^3.1.1",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.3.0",
+    "eslint-config-prettier": "^10.1.2",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.3",
+    "prettier": "^3.5.3",
     "prisma": "^6.6.0",
     "tailwindcss": "^4.1.4",
     "typescript": "^5",

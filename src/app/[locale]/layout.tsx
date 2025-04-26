@@ -5,7 +5,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 
 
-
+    
 // ★ Providers はここではインポート・使用しない ★
 // import { Providers } from '@/components/providers';
 
