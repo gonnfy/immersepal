@@ -23,8 +23,12 @@ enum StudyRating {
 
 // ↓↓↓ AIコンテンツの種類を示す Enum を【ここに追加】↓↓↓
 enum AiContentType {
-  EXPLANATION // 解説
-  TRANSLATION // 翻訳
+  EXPLANATION       // 解説テキスト
+  TRANSLATION       // 翻訳テキスト
+  AUDIO_PRIMARY     // Card.front (主要テキスト) の音声
+  AUDIO_SECONDARY   // Card.back (第2テキスト/答え) の音声
+  AUDIO_EXPLANATION // EXPLANATION コンテンツの音声
+  AUDIO_TRANSLATION // TRANSLATION コンテンツの音声
 }
 // ↑↑↑ 追加ここまで ↑↑↑
 
@@ -61,13 +65,7 @@ model Card {
   id            String   @id @default(cuid())
   front         String   @db.Text
   back          String   @db.Text
-  // --- explanation と translation を【削除】---
-  // explanation   String?  @db.Text // <- 削除
-  // translation   String?  @db.Text // <- 削除
 
-  // --- 音声URLは残す ---
-  frontAudioUrl String?  @db.Text
-  backAudioUrl  String?  @db.Text
 
   // --- SRSメタデータ (変更なし) ---
   interval      Int      @default(0)

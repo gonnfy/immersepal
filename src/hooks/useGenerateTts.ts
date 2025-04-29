@@ -1,27 +1,29 @@
-// src/hooks/useGenerateTts.ts
+// src/hooks/useGenerateTts.ts (ts(2739) エラー修正 + _e 修正 適用済み)
 
-import { useMutation } from '@tanstack/react-query';
-import { AppError, ERROR_CODES } from '@/lib/errors'; // エラー処理用
-import { type ApiErrorResponse } from '@/types/api.types'; // APIのエラー型
+import { useMutation, UseMutationOptions } from '@tanstack/react-query';
+// ↓↓↓ ERROR_CODES をインポート (初期値設定と AppError で必要) ↓↓↓
+import { AppError, ERROR_CODES } from '@/lib/errors';
+import { type ApiErrorResponse } from '@/types/api.types';
 
-// APIに送るデータの型
-interface TtsPayload {
+export interface TtsPayload {
   text: string;
-  language: string; // Add language property
-  // voice?: string;
+  language: string; // ★ オプショナル (?) を削除して必須に ★
+  cardId: string;
+  side: 'front' | 'back';
 }
 
-// APIから成功時に受け取るデータの型
-interface TtsSuccessResponse {
+// APIから成功時に受け取るデータの型 (signedUrl, gcsPath を含む)
+export interface TtsSuccessResponse {
   success: true;
-  url: string; // 音声ファイルの署名付きURL
+  signedUrl: string;
+  gcsPath: string;
   message?: string;
 }
 
 // バックエンドAPI (/api/tts) を呼び出す非同期関数
 const generateTtsApi = async (payload: TtsPayload): Promise<TtsSuccessResponse> => {
   const apiUrl = '/api/tts';
-  console.log('[useGenerateTts] Calling API:', apiUrl, 'with text:', payload.text);
+  console.log('[useGenerateTts] Calling API:', apiUrl, 'with payload:', payload);
 
   const response = await fetch(apiUrl, {
     method: 'POST',
@@ -31,83 +33,75 @@ const generateTtsApi = async (payload: TtsPayload): Promise<TtsSuccessResponse> 
 
   // API呼び出しが失敗した場合 (HTTPステータスが 2xx 以外)
   if (!response.ok) {
+    // --- ↓↓↓ errorData の初期化を修正 (必須プロパティを設定) ↓↓↓ ---
     const errorData: ApiErrorResponse = {
-        error: ERROR_CODES.INTERNAL_SERVER_ERROR, // デフォルト
-        message: `Failed to generate TTS. Status: ${response.status}`,
-        details: null
+      error: ERROR_CODES.INTERNAL_SERVER_ERROR, // デフォルトのエラーコード
+      message: `Failed to generate TTS. Status: ${response.status}`, // デフォルトメッセージ
+      details: null
     };
+    // --- ↑↑↑ 修正ここまで ↑↑↑ ---
+
     try {
-      // エラーレスポンスがJSON形式ならパースを試みる
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
           const parsedError: ApiErrorResponse = await response.json();
-          errorData.error = parsedError.error || errorData.error;
-          errorData.message = parsedError.message || errorData.message;
-          errorData.details = parsedError.details;
+          // API から返ってきた値があればデフォルトを上書き
+          if (parsedError && typeof parsedError.error === 'string') {
+              errorData.error = parsedError.error;
+          }
+          errorData.message = parsedError?.message || errorData.message;
+          errorData.details = parsedError?.details;
       }
-    } catch (e) {
-      // JSONパース失敗時
-      console.warn("[useGenerateTts] Could not parse error response body:", e);
+    // --- ↓↓↓ catch (_e) の修正 (適用済みのはず) ↓↓↓ ---
+    } catch (_e) {
+      console.warn("[useGenerateTts] Could not parse error response body:", _e);
     }
+    // --- ↑↑↑ 修正ここまで ↑↑↑ ---
 
-  // Check if the parsed error code string is a valid key in our ERROR_CODES const
+    // エラーコードの検証 (変更なし)
     const isKnownErrorCode = errorData.error && Object.prototype.hasOwnProperty.call(ERROR_CODES, errorData.error);
-
-    // Determine the ErrorCode type safely
     const validErrorCode: keyof typeof ERROR_CODES = isKnownErrorCode
-                       ? errorData.error as keyof typeof ERROR_CODES // Safe to cast now
-                       : ERROR_CODES.INTERNAL_SERVER_ERROR;          //        // 無効ならデフォルト
+                       ? errorData.error as keyof typeof ERROR_CODES
+                       : ERROR_CODES.INTERNAL_SERVER_ERROR;
 
-    // 修正後の throw 文
+    // AppError を throw (変更なし)
     throw new AppError(
-        errorData.message || 'TTS API request failed', // メッセージ
-        response.status,                               // ステータスコード
-        validErrorCode,                                // ★ 検証/デフォルト設定したエラーコードを使用
-        errorData.details                              // 詳細
+        errorData.message,
+        response.status,
+        validErrorCode,
+        errorData.details
     );
-  }
+  } // if (!response.ok) の終わり
 
-  // API呼び出しが成功した場合
+  // API呼び出しが成功した場合 (変更なし)
   const result: TtsSuccessResponse = await response.json();
-
-  // 成功レスポンスの形式を検証
-  if (!result.success || typeof result.url !== 'string') {
+  // レスポンス形式検証 (signedUrl と gcsPath をチェック)
+  if (
+    !result ||
+    result.success !== true ||
+    typeof result.signedUrl !== 'string' ||
+    typeof result.gcsPath !== 'string' // gcsPath もチェック
+    ) {
     console.error('[useGenerateTts] Invalid success response format:', result);
-    // 形式がおかしい場合はエラーとして扱う
     throw new AppError('Received invalid response format from TTS API.', 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
   }
-
-  // 検証OKなら成功データを返す
-  return result;
+  return result as TtsSuccessResponse;
 };
 
+type UseGenerateTtsOptions = Omit<
+    UseMutationOptions<TtsSuccessResponse, AppError, TtsPayload>, // variables が TtsPayload に
+    'mutationFn'
+>;
 
-/**
- * 音声合成API (/api/tts) を呼び出すための React Query Mutation フック
- * @param options - onSuccess, onError コールバックなどのオプション
- * @returns React Query Mutation オブジェクト ({ mutate, isPending, error, data, ... })
- */
-export const useGenerateTts = (options?: {
-  onSuccess?: (data: TtsSuccessResponse, variables: TtsPayload) => void; // variables の型は TtsPayload
-  onError?: (error: AppError, variables: TtsPayload) => void; // variables の型は TtsPayload
-}) => {
+// --- useGenerateTts フック本体 (変更なし) ---
+export const useGenerateTts = (options?: UseGenerateTtsOptions) => { 
   return useMutation<
-    TtsSuccessResponse, // 成功時に返されるデータの型
-    AppError,           // エラー発生時に throw されるエラーの型
-    TtsPayload          // mutate 関数に渡す引数 (variables) の型
+    TtsSuccessResponse, // 成功データ型 (signedUrl, gcsPath 含む)
+    AppError,
+    TtsPayload
   >({
-    mutationFn: generateTtsApi, // API を呼び出す関数
-    onSuccess: (data, variables) => {
-      console.log('TTS Generation successful, URL:', data.url);
-      // 呼び出し元から渡された onSuccess コールバックを実行
-      options?.onSuccess?.(data, variables);
-    },
-    onError: (error, variables) => {
-      // generateTtsApi が AppError を throw するので、型は AppError のはず
-      console.error('TTS Generation error:', error);
-      // 呼び出し元から渡された onError コールバックを実行
-      options?.onError?.(error, variables);
-    },
-    // ここではキャッシュの無効化 (invalidateQueries) は通常不要
-  });
+    mutationFn: generateTtsApi,
+    ...options,
+
+    },);
 };
