@@ -65,86 +65,93 @@ try {
   vertexAI = null;
 }
 
-// src/services/ai.service.ts の generateTtsAudio を修正
 
-// ... (他の import, 初期化) ...
+// src/services/ai.service.ts 内 generateTtsAudio (Result + gcsPath 対応版)
 
-// src/services/ai.service.ts 内 generateTtsAudio (英語デフォルト版)
-
-// src/services/ai.service.ts 内 generateTtsAudio (デバッグログ追加版)
-
+/**
+ * Generates TTS audio, saves to GCS, and returns a Result containing
+ * the GCS path and a signed URL for playback.
+ * Uses globally configured TTS voice based on languageCode.
+ * @param text The text to synthesize.
+ * @param gcsFilenameBase The desired unique filename base (without extension).
+ * @param languageCode The language code for TTS voice selection (e.g., "en-US", "ja-JP").
+ * @returns A Promise resolving to a Result object with { signedUrl, gcsPath } on success.
+ */
 export const generateTtsAudio = async (
   text: string,
-  gcsFilename: string,
+  gcsFilenameBase: string, // 引数名を変更 (より明確に)
   languageCode: string = process.env.TTS_LANGUAGE_CODE_EN || "en-US"
-): Promise<string | null> => {
-  if (!_ttsClient || !_storage || !_bucketName) { /* ... */ return null; }
-  if (!text || !gcsFilename) { /* ... */ return null; }
-
-  // --- ↓↓↓ デバッグログ追加 ↓↓↓ ---
-  console.log("--- generateTtsAudio Called ---");
-  console.log(`Received languageCode argument: "${languageCode}"`);
-  const envLangEn = process.env.TTS_LANGUAGE_CODE_EN;
-  const envVoiceEn = process.env.TTS_VOICE_NAME_EN;
-  const envLangJa = process.env.TTS_LANGUAGE_CODE_JA;
-  const envVoiceJa = process.env.TTS_VOICE_NAME_JA;
-  console.log(`Env EN: Code="${envLangEn}", Voice="${envVoiceEn}"`);
-  console.log(`Env JA: Code="${envLangJa}", Voice="${envVoiceJa}"`);
-  // --- ↑↑↑ デバッグログ追加ここまで ↑↑↑ ---
-
-  let voiceSetting: { languageCode: string; name: string };
-
-  // デフォルトは英語設定
-  const defaultEnglishLangCode = envLangEn || "en-US";
-  const defaultEnglishVoiceName = envVoiceEn || "en-US-Chirp3-HD-Leda";
-  voiceSetting = { languageCode: defaultEnglishLangCode, name: defaultEnglishVoiceName };
-  console.log(`Initial voice setting (defaulting to English): ${JSON.stringify(voiceSetting)}`);
-
-  // ↓↓↓ 日本語コードかチェック (小文字にして比較) ↓↓↓
-  if (languageCode && languageCode.toLowerCase().startsWith('ja')) {
-    console.log("-> Detected 'ja' prefix. Attempting to switch to Japanese voice settings.");
-    voiceSetting = {
-        languageCode: envLangJa || "ja-JP",
-        name: envVoiceJa || "ja-JP-Wavenet-B"
-    };
-  } else {
-      console.log("-> Did not detect 'ja' prefix. Using default English voice settings.");
+): Promise<Result<{ signedUrl: string; gcsPath: string }, AppError>> => { // ★ 戻り値の型を変更 ★
+  // --- クライアント初期化チェック ---
+  if (!_ttsClient || !_storage || !_bucketName) {
+    const error = new ExternalApiError("TTS/Storage client not initialized.");
+    console.error(`[generateTtsAudio] Error: ${error.message}`);
+    return { ok: false, error }; // ★ エラー Result を返す ★
   }
-  // ↑↑↑ チェックここまで ↑↑↑
+  // --- 引数チェック ---
+  if (!text || !gcsFilenameBase) {
+    const error = new ValidationError("Missing text or filename base for TTS.");
+    console.error(`[generateTtsAudio] Error: ${error.message}`);
+    return { ok: false, error }; // ★ エラー Result を返す ★
+  }
 
-  // 最終的に使われる設定をログに出力
-  console.log(`==> Final voice settings to be used: Lang=${voiceSetting.languageCode}, Voice=${voiceSetting.name}`);
-  console.log(`[AI Service] Generating TTS for filename: ${gcsFilename}`); // これは元のログ
+  // --- 音声設定の選択 (変更なし) ---
+  let voiceSetting: { languageCode: string; name: string };
+  const defaultEnglishLangCode = process.env.TTS_LANGUAGE_CODE_EN || "en-US";
+  const defaultEnglishVoiceName = process.env.TTS_VOICE_NAME_EN || "en-US-Chirp3-HD-Leda";
+  voiceSetting = { languageCode: defaultEnglishLangCode, name: defaultEnglishVoiceName };
+  if (languageCode && languageCode.toLowerCase().startsWith('ja')) {
+    voiceSetting = { languageCode: process.env.TTS_LANGUAGE_CODE_JA || "ja-JP", name: process.env.TTS_VOICE_NAME_JA || "ja-JP-Wavenet-B" };
+  }
+  // ... (他の言語の else if) ...
+
+  // ★ GCS パスを定義 ★
+  const gcsPath = `tts-audio/${gcsFilenameBase}.mp3`;
+
+  console.log(`[AI Service] Generating TTS: Lang=${voiceSetting.languageCode}, Voice=${voiceSetting.name}, Path=gs://${_bucketName}/${gcsPath}`);
 
   try {
-    const request = {
-      input: { text: text },
-      voice: voiceSetting, // ★ 最終的な設定を使用 ★
-      audioConfig: { audioEncoding: "MP3" as const },
-    };
-
+    // 1. 音声合成 (変更なし)
+    const request = { input: { text: text }, voice: voiceSetting, audioConfig: { audioEncoding: "MP3" as const } };
     console.log(`[AI Service] Calling synthesizeSpeech...`);
-    const [response] = await _ttsClient.synthesizeSpeech(request); // _ttsClient を使用
+    const [response] = await _ttsClient.synthesizeSpeech(request);
     const audioContent = response.audioContent;
-    if (!audioContent) { /* ... */ return null; }
+    if (!audioContent) {
+      // synthesizeSpeech 自体の失敗はエラーとして扱う
+      throw new ExternalApiError("Failed to synthesize speech, audioContent is empty.");
+    }
     console.log(`[AI Service] Speech synthesized successfully.`);
 
-    // ... (GCS へのアップロード、署名付き URL 生成は変更なし) ...
-     const bucket = _storage.bucket(_bucketName);
-     const filePath = `tts-audio/${gcsFilename}.mp3`;
-     const file = bucket.file(filePath);
-     await file.save(audioContent, { metadata: { contentType: "audio/mpeg" } });
-     const expiresDate = new Date();
-     expiresDate.setFullYear(expiresDate.getFullYear() + 100);
-     const [signedUrl] = await file.getSignedUrl({ action: "read", expires: expiresDate });
-     return signedUrl;
+    // 2. GCS へアップロード (gcsPath を使用)
+    const bucket = _storage.bucket(_bucketName);
+    const file = bucket.file(gcsPath); // ★ gcsPath を使用
+    console.log(`[AI Service] Uploading TTS audio to gs://${_bucketName}/${gcsPath}`);
+    await file.save(audioContent, { metadata: { contentType: "audio/mpeg" } });
+    console.log(`[AI Service] File uploaded successfully to ${gcsPath}.`);
 
-  } catch (error) {
-    console.error(`Error in generateTtsAudio for ${voiceSetting.languageCode} text "${text}":`, error);
-    return null;
+    // 3. 署名付き URL 生成 (有効期限を短く変更 - 例: 60分)
+    console.log(`[AI Service] Generating Signed URL for ${gcsPath}...`);
+    const expiresDate = new Date();
+    expiresDate.setMinutes(expiresDate.getMinutes() + 60); // ★ 60分後に設定 ★
+    const [signedUrl] = await file.getSignedUrl({ action: "read", expires: expiresDate });
+    console.log(`[AI Service] Signed URL generated.`);
+
+    // 4. 成功 Result を返す (signedUrl と gcsPath を両方含む) ★
+    return { ok: true, value: { signedUrl, gcsPath } };
+
+  } catch (error: unknown) {
+    console.error(`Error in generateTtsAudio for ${gcsPath}:`, error);
+    // ★ エラー Result を返す ★
+    if (isAppError(error)) { // synthesizeSpeech が AppError を throw した場合など
+      return { ok: false, error: error };
+    } else {
+      const message = error instanceof Error ? error.message : 'Unknown error during TTS generation/upload.';
+      return { ok: false, error: new ExternalApiError(`TTS process failed: ${message}`, error instanceof Error ? error : undefined) };
+    }
   }
 };
 
+// (generateExplanation, generateTranslation は変更なし)
 // (他の関数 generateExplanation, generateTranslation は変更なし)
 
 // ... (generateExplanation, generateTranslation は変更なし) ...

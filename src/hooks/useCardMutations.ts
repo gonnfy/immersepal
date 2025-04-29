@@ -15,8 +15,6 @@ export interface Card {
   nextReviewAt: string | Date; // Use string if API returns string, Date if objects are preferred
   createdAt: string | Date;
   updatedAt: string | Date;
-  frontAudioUrl?: string | null;
-  backAudioUrl?: string | null;
   explanation?: string | null;
   translation?: string | null;
 }
