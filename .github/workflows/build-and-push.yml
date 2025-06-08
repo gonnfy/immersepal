@@ -38,8 +38,8 @@ jobs:
 
       - name: Build and Push Docker Image with Multiple Tags
         run: |
-          # Gitのコミットハッシュの先頭8文字を取得
-          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-8)
+          # Gitのコミットハッシュの先頭7文字を取得
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
           echo "Tagging with: latest, ${{ env.IMAGE_VERSION }}, sha-${SHORT_SHA}"
 
           # Dockerイメージのベース名を定義
