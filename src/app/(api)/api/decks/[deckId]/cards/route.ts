@@ -21,14 +21,20 @@ export async function POST(
     const { deckId } = await context.params;
 
     if (!deckId) {
-      return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Deck ID is required' },
+        { status: 400 }
+      );
     }
 
     const body = await request.json();
     const validation = createCardSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json({ errors: validation.error.errors }, { status: 400 });
+      return NextResponse.json(
+        { errors: validation.error.errors },
+        { status: 400 }
+      );
     }
 
     const { front, back } = validation.data;
@@ -36,7 +42,10 @@ export async function POST(
     // Get user ID
     const userId = await getServerUserId();
     if (!userId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
     }
 
     // Call the service function to create the card, passing the userId
@@ -44,7 +53,7 @@ export async function POST(
 
     return NextResponse.json(newCard, { status: 201 });
   } catch (error) {
-     // Use your centralized error handler
+    // Use your centralized error handler
     return handleApiError(error);
   }
 }
@@ -59,8 +68,8 @@ export async function GET(
     const { searchParams } = new URL(request.url);
 
     const querySchema = z.object({
-        limit: z.coerce.number().int().min(1).max(100).default(10), // デフォルト10, 最大100
-        offset: z.coerce.number().int().min(0).default(0),       // デフォルト0
+      limit: z.coerce.number().int().min(1).max(100).default(10), // デフォルト10, 最大100
+      offset: z.coerce.number().int().min(0).default(0), // デフォルト0
     });
 
     let validatedQuery: { limit: number; offset: number };
@@ -70,15 +79,24 @@ export async function GET(
         offset: searchParams.get('offset'),
       });
     } catch (err) {
-       if (err instanceof ZodError) {
-         return NextResponse.json({
-           error: ERROR_CODES.VALIDATION_ERROR,
-           message: 'Invalid query parameters for pagination.',
-           details: err.flatten().fieldErrors,
-         }, { status: 400 });
-       }
-       // Use handleApiError for other parsing errors
-       return handleApiError(new AppError('Failed to parse pagination query parameters', 400, ERROR_CODES.VALIDATION_ERROR));
+      if (err instanceof ZodError) {
+        return NextResponse.json(
+          {
+            error: ERROR_CODES.VALIDATION_ERROR,
+            message: 'Invalid query parameters for pagination.',
+            details: err.flatten().fieldErrors,
+          },
+          { status: 400 }
+        );
+      }
+      // Use handleApiError for other parsing errors
+      return handleApiError(
+        new AppError(
+          'Failed to parse pagination query parameters',
+          400,
+          ERROR_CODES.VALIDATION_ERROR
+        )
+      );
     }
 
     // --- ここまでで limit と offset が検証済み ---
@@ -88,18 +106,27 @@ export async function GET(
     const { deckId } = await context.params;
 
     if (!deckId) {
-      return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Deck ID is required' },
+        { status: 400 }
+      );
     }
 
     // 1. Authentication/Authorization
     const userId = await getServerUserId();
     if (!userId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
     }
 
     // 2. Call Service Function
     // --- 4.2. Service 関数の呼び出し変更 ---
-    const { data: cards, totalItems } = await getCardsByDeckId(userId, deckId, { limit, offset });
+    const { data: cards, totalItems } = await getCardsByDeckId(userId, deckId, {
+      limit,
+      offset,
+    });
 
     // 3. Success Response
     // --- 4.3. ページネーションレスポンスの構築 ---
@@ -131,7 +158,6 @@ export async function GET(
 
     // --- 4.4. レスポンスの返却変更 ---
     return NextResponse.json(responseBody, { status: 200 });
-
   } catch (error) {
     // 4. Error Handling
     return handleApiError(error);

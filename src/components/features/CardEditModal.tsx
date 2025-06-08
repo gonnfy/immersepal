@@ -39,13 +39,15 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
   });
 
   const updateCardMutation = useUpdateCard(deckId, {
-    onSuccess: (updatedCard) => { // Remove unused variables parameter
+    onSuccess: (updatedCard) => {
+      // Remove unused variables parameter
       console.log('Card updated successfully:', updatedCard);
       setApiError(null);
       onSuccess?.(updatedCard); // Call the prop onSuccess
       onOpenChange(false); // Close modal
     },
-    onError: (error) => { // Remove unused _variables parameter
+    onError: (error) => {
+      // Remove unused _variables parameter
       // Use error directly
       console.error(`Error updating card:`, error);
       setApiError(error);
@@ -103,11 +105,12 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
     };
   }, [onOpenChange]);
 
-
   const onSubmit: SubmitHandler<CardUpdatePayload> = (data) => {
     if (!card) {
       console.error('Attempted to submit edit form without a card.');
-      setApiError(new AppError('No card selected for editing.', 400, 'VALIDATION_ERROR'));
+      setApiError(
+        new AppError('No card selected for editing.', 400, 'VALIDATION_ERROR')
+      );
       return;
     }
     setApiError(null); // Clear previous API error before new submission
@@ -123,19 +126,25 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
   const isPending = updateCardMutation.isPending || isSubmitting;
 
   // Stringify details outside JSX to satisfy TypeScript
-  const detailsString = apiError && isAppError(apiError) && apiError.details
-    ? JSON.stringify(apiError.details, null, 2)
-    : null;
+  const detailsString =
+    apiError && isAppError(apiError) && apiError.details
+      ? JSON.stringify(apiError.details, null, 2)
+      : null;
 
   return (
     <dialog
       ref={dialogRef}
       className="p-6 rounded-lg shadow-xl bg-white dark:bg-gray-800 w-full max-w-md backdrop:bg-black backdrop:opacity-50"
     >
-      <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Edit Card</h2>
+      <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">
+        Edit Card
+      </h2>
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <div className="mb-4">
-          <label htmlFor="front" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label
+            htmlFor="front"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+          >
             Front
           </label>
           <textarea
@@ -146,14 +155,20 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
             aria-invalid={errors.front ? 'true' : 'false'}
           />
           {errors.front && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+            <p
+              className="mt-1 text-sm text-red-600 dark:text-red-400"
+              role="alert"
+            >
               {errors.front.message}
             </p>
           )}
         </div>
 
         <div className="mb-6">
-          <label htmlFor="back" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label
+            htmlFor="back"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+          >
             Back
           </label>
           <textarea
@@ -164,7 +179,10 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
             aria-invalid={errors.back ? 'true' : 'false'}
           />
           {errors.back && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+            <p
+              className="mt-1 text-sm text-red-600 dark:text-red-400"
+              role="alert"
+            >
               {errors.back.message}
             </p>
           )}
@@ -172,7 +190,10 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
 
         {/* Display API Error */}
         {apiError && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
+          <div
+            className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded dark:bg-red-900 dark:border-red-700 dark:text-red-200"
+            role="alert"
+          >
             <p className="font-semibold">Error Updating Card</p>
             <p>{apiError.message}</p>
             {detailsString && (
@@ -181,12 +202,14 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
           </div>
         )}
         {/* Display Zod refine error */}
-         {errors.root && ( // Check for root errors from refine
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-              {errors.root.message}
-            </p>
-          )}
-
+        {errors.root && ( // Check for root errors from refine
+          <p
+            className="mt-1 text-sm text-red-600 dark:text-red-400"
+            role="alert"
+          >
+            {errors.root.message}
+          </p>
+        )}
 
         <div className="flex justify-end space-x-3">
           <button

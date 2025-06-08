@@ -21,9 +21,16 @@ export interface TtsSuccessResponse {
 }
 
 // バックエンドAPI (/api/tts) を呼び出す非同期関数
-const generateTtsApi = async (payload: TtsPayload): Promise<TtsSuccessResponse> => {
+const generateTtsApi = async (
+  payload: TtsPayload
+): Promise<TtsSuccessResponse> => {
   const apiUrl = '/api/tts';
-  console.log('[useGenerateTts] Calling API:', apiUrl, 'with payload:', payload);
+  console.log(
+    '[useGenerateTts] Calling API:',
+    apiUrl,
+    'with payload:',
+    payload
+  );
 
   const response = await fetch(apiUrl, {
     method: 'POST',
@@ -37,39 +44,41 @@ const generateTtsApi = async (payload: TtsPayload): Promise<TtsSuccessResponse> 
     const errorData: ApiErrorResponse = {
       error: ERROR_CODES.INTERNAL_SERVER_ERROR, // デフォルトのエラーコード
       message: `Failed to generate TTS. Status: ${response.status}`, // デフォルトメッセージ
-      details: null
+      details: null,
     };
     // --- ↑↑↑ 修正ここまで ↑↑↑ ---
 
     try {
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-          const parsedError: ApiErrorResponse = await response.json();
-          // API から返ってきた値があればデフォルトを上書き
-          if (parsedError && typeof parsedError.error === 'string') {
-              errorData.error = parsedError.error;
-          }
-          errorData.message = parsedError?.message || errorData.message;
-          errorData.details = parsedError?.details;
+        const parsedError: ApiErrorResponse = await response.json();
+        // API から返ってきた値があればデフォルトを上書き
+        if (parsedError && typeof parsedError.error === 'string') {
+          errorData.error = parsedError.error;
+        }
+        errorData.message = parsedError?.message || errorData.message;
+        errorData.details = parsedError?.details;
       }
-    // --- ↓↓↓ catch (_e) の修正 (適用済みのはず) ↓↓↓ ---
+      // --- ↓↓↓ catch (_e) の修正 (適用済みのはず) ↓↓↓ ---
     } catch (_e) {
-      console.warn("[useGenerateTts] Could not parse error response body:", _e);
+      console.warn('[useGenerateTts] Could not parse error response body:', _e);
     }
     // --- ↑↑↑ 修正ここまで ↑↑↑ ---
 
     // エラーコードの検証 (変更なし)
-    const isKnownErrorCode = errorData.error && Object.prototype.hasOwnProperty.call(ERROR_CODES, errorData.error);
+    const isKnownErrorCode =
+      errorData.error &&
+      Object.prototype.hasOwnProperty.call(ERROR_CODES, errorData.error);
     const validErrorCode: keyof typeof ERROR_CODES = isKnownErrorCode
-                       ? errorData.error as keyof typeof ERROR_CODES
-                       : ERROR_CODES.INTERNAL_SERVER_ERROR;
+      ? (errorData.error as keyof typeof ERROR_CODES)
+      : ERROR_CODES.INTERNAL_SERVER_ERROR;
 
     // AppError を throw (変更なし)
     throw new AppError(
-        errorData.message,
-        response.status,
-        validErrorCode,
-        errorData.details
+      errorData.message,
+      response.status,
+      validErrorCode,
+      errorData.details
     );
   } // if (!response.ok) の終わり
 
@@ -81,20 +90,24 @@ const generateTtsApi = async (payload: TtsPayload): Promise<TtsSuccessResponse> 
     result.success !== true ||
     typeof result.signedUrl !== 'string' ||
     typeof result.gcsPath !== 'string' // gcsPath もチェック
-    ) {
+  ) {
     console.error('[useGenerateTts] Invalid success response format:', result);
-    throw new AppError('Received invalid response format from TTS API.', 500, ERROR_CODES.INTERNAL_SERVER_ERROR);
+    throw new AppError(
+      'Received invalid response format from TTS API.',
+      500,
+      ERROR_CODES.INTERNAL_SERVER_ERROR
+    );
   }
   return result as TtsSuccessResponse;
 };
 
 type UseGenerateTtsOptions = Omit<
-    UseMutationOptions<TtsSuccessResponse, AppError, TtsPayload>, // variables が TtsPayload に
-    'mutationFn'
+  UseMutationOptions<TtsSuccessResponse, AppError, TtsPayload>, // variables が TtsPayload に
+  'mutationFn'
 >;
 
 // --- useGenerateTts フック本体 (変更なし) ---
-export const useGenerateTts = (options?: UseGenerateTtsOptions) => { 
+export const useGenerateTts = (options?: UseGenerateTtsOptions) => {
   return useMutation<
     TtsSuccessResponse, // 成功データ型 (signedUrl, gcsPath 含む)
     AppError,
@@ -102,6 +115,5 @@ export const useGenerateTts = (options?: UseGenerateTtsOptions) => {
   >({
     mutationFn: generateTtsApi,
     ...options,
-
-    },);
+  });
 };

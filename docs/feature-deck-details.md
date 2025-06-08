@@ -23,7 +23,7 @@ The responsibility for fetching the core deck information and the list of cards 
       const [cards, totalItems] = await prisma.$transaction([
         prisma.card.findMany({
           where: { deckId: deckId }, // Deck ownership already verified
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: 'asc' },
           skip: validatedOffset,
           take: validatedLimit,
           include: {

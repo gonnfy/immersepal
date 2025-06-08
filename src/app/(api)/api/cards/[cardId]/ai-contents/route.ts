@@ -5,7 +5,12 @@ import { z } from 'zod';
 import { AiContentType } from '@prisma/client'; // Prisma Enum をインポート
 import { getServerUserId } from '@/lib/auth';
 import { saveAiContent } from '@/services/card.service'; // 作成したサービス関数
-import { handleApiError, ValidationError, AppError, AuthenticationError } from '@/lib/errors'; // エラー型
+import {
+  handleApiError,
+  ValidationError,
+  AppError,
+  AuthenticationError,
+} from '@/lib/errors'; // エラー型
 import { type Result } from '@/types';
 import { type AICardContent } from '@prisma/client';
 
@@ -51,13 +56,23 @@ export async function POST(request: Request, context: Context) {
       const rawBody: unknown = await request.json();
       const validation = aiContentCreateApiSchema.safeParse(rawBody);
       if (!validation.success) {
-        throw new ValidationError('Invalid request body for saving AI content.', validation.error.flatten());
+        throw new ValidationError(
+          'Invalid request body for saving AI content.',
+          validation.error.flatten()
+        );
       }
       payload = validation.data;
     } catch (e) {
-      if (e instanceof ValidationError) { throw e; }
-      console.error('Error parsing/validating save AI content request body:', e);
-      throw new ValidationError('Invalid JSON body or structure for saving AI content.');
+      if (e instanceof ValidationError) {
+        throw e;
+      }
+      console.error(
+        'Error parsing/validating save AI content request body:',
+        e
+      );
+      throw new ValidationError(
+        'Invalid JSON body or structure for saving AI content.'
+      );
     }
 
     // 4. サービス関数呼び出し (Result が返ってくる)
@@ -76,7 +91,6 @@ export async function POST(request: Request, context: Context) {
     // 6. 成功レスポンス (201 Created)
     // 作成された AICardContent オブジェクトを返す
     return NextResponse.json(saveResult.value, { status: 201 });
-
   } catch (error: unknown) {
     // 認証、パース/バリデーション、予期せぬエラーなどをここで処理
     return handleApiError(error);

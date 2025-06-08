@@ -59,15 +59,21 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
     onOpenChange(false);
   };
 
-  const handleError = (error: ApiError | AuthError | AppError) => { // Include AppError if needed
+  const handleError = (error: ApiError | AuthError | AppError) => {
+    // Include AppError if needed
     console.error('Error updating deck:', error);
     // Check if error has a message property before accessing it
-    const message = 'message' in error ? error.message : 'An unexpected error occurred.';
+    const message =
+      'message' in error ? error.message : 'An unexpected error occurred.';
     setApiError(message);
   };
 
   // Setup mutation with callbacks
-  const { mutate: updateDeckMutate, isPending: updateIsPending, error: mutationError } = useUpdateDeck();
+  const {
+    mutate: updateDeckMutate,
+    isPending: updateIsPending,
+    error: mutationError,
+  } = useUpdateDeck();
 
   const onSubmit: SubmitHandler<DeckUpdatePayload> = (data) => {
     if (!deck) {
@@ -82,17 +88,18 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
     };
 
     // Optional: Only submit if there are actual changes
-    const hasChanges = dataToSubmit.name !== deck.name || dataToSubmit.description !== deck.description;
+    const hasChanges =
+      dataToSubmit.name !== deck.name ||
+      dataToSubmit.description !== deck.description;
     if (!hasChanges) {
-        onOpenChange(false); // Close if no changes
-        return;
+      onOpenChange(false); // Close if no changes
+      return;
     }
-
 
     setApiError(null); // Clear previous errors before submitting
     updateDeckMutate(
-        { deckId: deck.id, data: dataToSubmit },
-        { onSuccess: handleSuccess, onError: handleError } // Pass callbacks here
+      { deckId: deck.id, data: dataToSubmit },
+      { onSuccess: handleSuccess, onError: handleError } // Pass callbacks here
     );
   };
 
@@ -113,16 +120,32 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
           className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           aria-label="Close modal"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="w-6 h-6"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
 
-        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Edit Deck</h2>
+        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
+          Edit Deck
+        </h2>
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="mb-4">
-            <label htmlFor="deck-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor="deck-name"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Deck Name
             </label>
             <input
@@ -130,19 +153,27 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
               type="text"
               {...register('name')}
               className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                errors.name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                errors.name
+                  ? 'border-red-500'
+                  : 'border-gray-300 dark:border-gray-600'
               }`}
               aria-invalid={errors.name ? 'true' : 'false'}
             />
             {errors.name && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+              <p
+                className="mt-1 text-sm text-red-600 dark:text-red-400"
+                role="alert"
+              >
                 {errors.name.message}
               </p>
             )}
           </div>
 
           <div className="mb-6">
-            <label htmlFor="deck-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label
+              htmlFor="deck-description"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+            >
               Description (Optional)
             </label>
             <textarea
@@ -150,12 +181,17 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
               rows={3}
               {...register('description')}
               className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                errors.description ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                errors.description
+                  ? 'border-red-500'
+                  : 'border-gray-300 dark:border-gray-600'
               }`}
               aria-invalid={errors.description ? 'true' : 'false'}
             />
             {errors.description && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
+              <p
+                className="mt-1 text-sm text-red-600 dark:text-red-400"
+                role="alert"
+              >
                 {errors.description.message}
               </p>
             )}
@@ -163,17 +199,26 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
 
           {/* API Error Display */}
           {apiError && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
+            <div
+              className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200"
+              role="alert"
+            >
               <p className="text-sm">{apiError}</p>
             </div>
           )}
           {/* Display mutation error if not handled by apiError state already */}
           {mutationError && !apiError && (
-             <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
-               <p className="text-sm">{'message' in mutationError ? mutationError.message : 'An unexpected error occurred during submission.'}</p>
-             </div>
-           )}
-
+            <div
+              className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200"
+              role="alert"
+            >
+              <p className="text-sm">
+                {'message' in mutationError
+                  ? mutationError.message
+                  : 'An unexpected error occurred during submission.'}
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-end space-x-3">
             <button

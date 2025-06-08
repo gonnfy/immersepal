@@ -1,15 +1,15 @@
 {
-    "HomePage": {
-      "title": "こんにちは!",
-      "about": "つかまってろよ！"
-    },
-    "cardCreateForm": {
-      "frontLabel": "表面",
-      "frontPlaceholder": "表面のテキストを入力...",
-      "backLabel": "裏面",
-      "backPlaceholder": "裏面のテキストを入力...",
-      "createButton": "カードを追加",
-      "creatingButton": "作成中...",
-      "creationError": "カード作成エラー: {message}"
-    }
+  "HomePage": {
+    "title": "こんにちは!",
+    "about": "ページはここ"
+  },
+  "cardCreateForm": {
+    "frontLabel": "表面",
+    "frontPlaceholder": "表面のテキストを入力...",
+    "backLabel": "裏面",
+    "backPlaceholder": "裏面のテキストを入力...",
+    "createButton": "カードを追加",
+    "creatingButton": "作成中...",
+    "creationError": "カード作成エラー: {message}"
+  }
 }

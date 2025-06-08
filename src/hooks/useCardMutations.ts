@@ -75,27 +75,31 @@ export const useCreateCard = (
 };
 
 // --- Delete Card API Call ---
-const deleteCardApi = async (
-  deckId: string,
-  cardId: string
-): Promise<void> => {
+const deleteCardApi = async (deckId: string, cardId: string): Promise<void> => {
   const apiUrl = `/api/decks/${deckId}/cards/${cardId}`; // locale-independent
   const response = await fetch(apiUrl, { method: 'DELETE' });
   if (!response.ok && response.status !== 204) {
-    let errorData = { message: 'Failed to delete card', errorCode: 'API_ERROR', details: null };
+    let errorData = {
+      message: 'Failed to delete card',
+      errorCode: 'API_ERROR',
+      details: null,
+    };
     try {
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
         errorData = await response.json();
       }
-      
-    } catch (_e) { // _e is unused
-      console.warn("Could not parse error response body for DELETE card request.");
+    } catch (_e) {
+      // _e is unused
+      console.warn(
+        'Could not parse error response body for DELETE card request.'
+      );
     }
     throw new AppError(
       errorData.message || 'Failed to delete card',
       response.status,
-      (ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] || ERROR_CODES.INTERNAL_SERVER_ERROR),
+      ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] ||
+        ERROR_CODES.INTERNAL_SERVER_ERROR,
       errorData.details
     );
   }
@@ -114,7 +118,9 @@ export const useDeleteCard = (
     mutationFn: ({ cardId }) => deleteCardApi(deckId, cardId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
-      console.log(`Card ${variables.cardId} deleted successfully from deck ${deckId}`);
+      console.log(
+        `Card ${variables.cardId} deleted successfully from deck ${deckId}`
+      );
       options?.onSuccess?.(variables.cardId);
     },
     onError: (error, variables) => {
@@ -138,19 +144,24 @@ const updateCardApi = async (
     body: JSON.stringify(updateData),
   });
   if (!response.ok) {
-    let errorData = { message: `Failed to update card (Status: ${response.status})`, errorCode: 'API_ERROR', details: null };
+    let errorData = {
+      message: `Failed to update card (Status: ${response.status})`,
+      errorCode: 'API_ERROR',
+      details: null,
+    };
     try {
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-           errorData = await response.json();
+        errorData = await response.json();
       }
     } catch (e) {
-      console.warn("[updateCardApi] Could not parse error response body:", e);
+      console.warn('[updateCardApi] Could not parse error response body:', e);
     }
     throw new AppError(
       errorData.message,
       response.status,
-      (ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] || ERROR_CODES.INTERNAL_SERVER_ERROR),
+      ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] ||
+        ERROR_CODES.INTERNAL_SERVER_ERROR,
       errorData.details
     );
   }
@@ -161,8 +172,14 @@ const updateCardApi = async (
 export const useUpdateCard = (
   deckId: string,
   options?: {
-    onSuccess?: (updatedCard: Card, variables: { cardId: string; data: CardUpdatePayload }) => void;
-    onError?: (error: AppError, variables: { cardId: string; data: CardUpdatePayload }) => void;
+    onSuccess?: (
+      updatedCard: Card,
+      variables: { cardId: string; data: CardUpdatePayload }
+    ) => void;
+    onError?: (
+      error: AppError,
+      variables: { cardId: string; data: CardUpdatePayload }
+    ) => void;
   }
 ) => {
   const queryClient = useQueryClient();
@@ -174,7 +191,10 @@ export const useUpdateCard = (
     mutationFn: ({ cardId, data }) => updateCardApi(deckId, cardId, data),
     onSuccess: (updatedCard, variables) => {
       queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
-      console.log(`Card ${variables.cardId} updated successfully:`, updatedCard);
+      console.log(
+        `Card ${variables.cardId} updated successfully:`,
+        updatedCard
+      );
       options?.onSuccess?.(updatedCard, variables);
     },
     onError: (error, variables) => {

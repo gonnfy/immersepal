@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React from 'react';
 
@@ -20,10 +20,9 @@ export function ConfirmationDialog({
   title,
   description,
   confirmText = 'Confirm', // Default value
-  cancelText = 'Cancel',   // Default value
+  cancelText = 'Cancel', // Default value
   isConfirming = false,
 }: ConfirmationDialogProps) {
-
   // Handle closing the modal when clicking the overlay
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
@@ -51,16 +50,26 @@ export function ConfirmationDialog({
 
       {/* Modal Content */}
       <div className="relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-white dark:bg-gray-800 shadow-xl transform transition-all sm:my-8">
-        <div className="p-6 space-y-4"> {/* Replaced YStack */}
-          <h2 id="confirmation-dialog-title" className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100"> {/* Replaced Dialog.Title */}
+        <div className="p-6 space-y-4">
+          {' '}
+          {/* Replaced YStack */}
+          <h2
+            id="confirmation-dialog-title"
+            className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100"
+          >
+            {' '}
+            {/* Replaced Dialog.Title */}
             {title}
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400"> {/* Replaced Dialog.Description/Paragraph */}
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {' '}
+            {/* Replaced Dialog.Description/Paragraph */}
             {description}
           </p>
-
           {/* Action Buttons */}
-          <div className="flex justify-end space-x-3 pt-4"> {/* Replaced XStack */}
+          <div className="flex justify-end space-x-3 pt-4">
+            {' '}
+            {/* Replaced XStack */}
             <button
               type="button"
               onClick={() => onOpenChange(false)}

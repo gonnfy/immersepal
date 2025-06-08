@@ -4,8 +4,6 @@ import { notFound } from 'next/navigation';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 
-
-    
 // ★ Providers はここではインポート・使用しない ★
 // import { Providers } from '@/components/providers';
 
@@ -19,7 +17,7 @@ function isValidLocale(locale: string): boolean {
 
 export default async function LocaleLayout({
   children,
-  params: paramsPromise // 引数名を変更 (任意だが推奨)
+  params: paramsPromise, // 引数名を変更 (任意だが推奨)
 }: {
   children: ReactNode;
   params: Promise<{ locale: string }>; // ★ 型を Promise に ★
@@ -34,11 +32,11 @@ export default async function LocaleLayout({
   try {
     messages = await getMessages({ locale });
   } catch (error) {
-    console.error("Failed to load messages for locale:", locale, error);
+    console.error('Failed to load messages for locale:', locale, error);
     notFound();
   }
   if (!messages) {
-     notFound();
+    notFound();
   }
 
   // ★★★ <html> と <body> は削除し、Provider のみがトップレベル ★★★

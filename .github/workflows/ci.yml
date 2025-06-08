@@ -3,9 +3,9 @@ name: CI Checks (Bun) # 名前を少し変更 (任意)
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -42,8 +42,8 @@ jobs:
         run: bun run build
         # ビルドに必要な環境変数はそのまま (通常 bun run でも解釈される)
 env:
-          # env: の下で、通常は【スペース 2つ】でインデントします
-          # キー（変数名）、コロン(:)、スペース、値（ダブルクォートで囲むのが無難）の形式です
-          # 各変数は別々の行に書きます
-          NEXT_PUBLIC_SUPABASE_URL: "https://ieepmqfqnkncjnzwtgpy.supabase.co" # ← ダミー値でOK
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZXBtcWZxbmtuY2puend0Z3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDUzMDc4MzYsImV4cCI6MjA2MDg4MzgzNn0.JV1mdRv8LKjy0hwAxtRkhGhRINwAEaB7dd5EIWaftUw" # ← ダミー値でOK
+  # env: の下で、通常は【スペース 2つ】でインデントします
+  # キー（変数名）、コロン(:)、スペース、値（ダブルクォートで囲むのが無難）の形式です
+  # 各変数は別々の行に書きます
+  NEXT_PUBLIC_SUPABASE_URL: 'https://ieepmqfqnkncjnzwtgpy.supabase.co' # ← ダミー値でOK
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZXBtcWZxbmtuY2puend0Z3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDUzMDc4MzYsImV4cCI6MjA2MDg4MzgzNn0.JV1mdRv8LKjy0hwAxtRkhGhRINwAEaB7dd5EIWaftUw' # ← ダミー値でOK

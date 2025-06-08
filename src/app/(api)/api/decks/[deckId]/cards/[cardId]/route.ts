@@ -21,13 +21,25 @@ export async function DELETE(
     // 1. Authentication: Get user ID
     const userId = await getServerUserId();
     if (!userId) {
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: ERROR_CODES.AUTHENTICATION_FAILED,
+          message: 'Authentication required.',
+        },
+        { status: 401 }
+      );
     }
 
     // 2. Extract parameters
     const { deckId, cardId } = await context.params;
     if (!deckId || !cardId) {
-      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId or cardId in URL.' }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: ERROR_CODES.VALIDATION_ERROR,
+          message: 'Missing deckId or cardId in URL.',
+        },
+        { status: 400 }
+      );
     }
 
     // 3. Service Call: Attempt to delete the card
@@ -35,7 +47,6 @@ export async function DELETE(
 
     // 4. Success Response: Return 204 No Content
     return new NextResponse(null, { status: 204 });
-
   } catch (error) {
     // 5. Error Handling: Use the centralized handler
     return handleApiError(error);
@@ -56,30 +67,43 @@ interface PutParams {
 /**
  * Updates a specific card (PUT)
  */
-export async function PUT(
-  request: Request,
-  context: { params: PutParams }
-) {
+export async function PUT(request: Request, context: { params: PutParams }) {
   // No top-level try-catch needed when using Result pattern consistently in service
 
   // 1. Authentication: Get user ID
   const userId = await getServerUserId();
   if (!userId) {
-    return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: ERROR_CODES.AUTHENTICATION_FAILED,
+        message: 'Authentication required.',
+      },
+      { status: 401 }
+    );
   }
 
   // 2. Extract parameters
   const { deckId, cardId } = await context.params;
   if (!deckId || !cardId) {
-     return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId or cardId in URL.' }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: ERROR_CODES.VALIDATION_ERROR,
+        message: 'Missing deckId or cardId in URL.',
+      },
+      { status: 400 }
+    );
   }
 
   // 3. Get and Parse Request Body
   let body: unknown;
   try {
     body = await request.json();
-  } catch (_e) { // _e は使わないが、catch 節は必要 (Removed unused eslint-disable comment)
-    return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
+  } catch (_e) {
+    // _e は使わないが、catch 節は必要 (Removed unused eslint-disable comment)
+    return NextResponse.json(
+      { error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' },
+      { status: 400 }
+    );
   }
 
   // 4. Input Validation (Zod)

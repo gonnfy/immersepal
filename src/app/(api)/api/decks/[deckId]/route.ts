@@ -1,179 +1,145 @@
-import { NextResponse } from 'next/server';
-import { getServerUserId } from '@/lib/auth'; // Adjusted import path
-import { deleteDeck, getDeckById } from '@/services/deck.service'; // Adjusted import path - Added getDeckById
-import { isAppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Adjusted import path
-import { ApiErrorResponse } from '@/types/api.types'; // Added import for error response type
-import { deckUpdateSchema, DeckUpdatePayload } from '@/lib/zod'; // Adjusted import path
-import { updateDeck } from '@/services/deck.service'; // Adjusted import path
-import { ERROR_CODES, handleApiError } from '@/lib/errors'; // Adjusted import path
+// src/app/(api)/api/decks/[deckId]/route.ts (Refactored for Auth)
 
-// GET handler to retrieve a specific deck by ID
-export async function GET(
-  request: Request, // Keep request parameter as per Next.js convention
-  context: { params: { deckId: string } } // Use context, removed locale
-) {
-  try {
-    const userId = await getServerUserId();
-    if (!userId) {
-      const errorResponse: ApiErrorResponse = { error: 'UNAUTHORIZED', message: 'Authentication required.' };
-      return NextResponse.json(errorResponse, { status: 401 });
-    }
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerUserId } from '@/lib/auth';
+import {
+  handleApiError,
+  ValidationError,
+  AuthenticationError,
+  AppError,
+} from '@/lib/errors';
+import { deckUpdateSchema } from '@/lib/zod'; // Zod schema for updates
+import { getDeckById, updateDeck, deleteDeck } from '@/services/deck.service'; // Import Deck services
+import {
+  type DeckUpdatePayload,
+  type DeckApiResponse,
+} from '@/types/api.types'; // Import types
+import { type Result } from '@/types';
 
-    const { deckId } = context.params; // Await params
-
-    // Validate deckId format if necessary (e.g., using a regex or library)
-    // Example: if (!isValidUUID(deckId)) { return NextResponse.json({ error: 'BAD_REQUEST', message: 'Invalid Deck ID format.' }, { status: 400 }); }
-
-    const deckData = await getDeckById(userId, deckId);
-
-    // Successfully retrieved, return deck data
-    return NextResponse.json(deckData, { status: 200 });
-
-  } catch (error) {
-    console.error('Error fetching deck:', error); // Log the error server-side
-
-    if (isAppError(error)) {
-      let status = 500;
-      let errorCode: ApiErrorResponse['error'] = 'INTERNAL_SERVER_ERROR'; // Default error code
-
-      if (error instanceof NotFoundError) {
-        status = 404;
-        errorCode = 'NOT_FOUND';
-      } else if (error instanceof PermissionError) {
-        status = 403;
-        errorCode = 'FORBIDDEN';
-      } else if (error instanceof DatabaseError) {
-        status = 500;
-        errorCode = 'DATABASE_ERROR';
-      } else {
-        // Use error name for other specific AppErrors if needed, otherwise keep default
-        errorCode = error.name as ApiErrorResponse['error']; // Cast, assuming error names match ApiErrorResponse types
-      }
-
-      const errorResponse: ApiErrorResponse = { error: errorCode, message: error.message };
-      return NextResponse.json(errorResponse, { status });
-    }
-
-    // Handle unexpected errors
-    const errorResponse: ApiErrorResponse = { error: 'INTERNAL_SERVER_ERROR', message: 'An unexpected internal server error occurred.' };
-    return NextResponse.json(errorResponse, { status: 500 });
-  }
+// Context type for route parameters
+interface Context {
+  params: {
+    deckId: string;
+  };
 }
 
-
-export async function DELETE(
-  request: Request, // Keep request parameter as per Next.js convention, though unused
-  context: { params: { deckId: string } } // Use context, removed locale
-) {
+/**
+ * GET handler to fetch a specific deck by ID for the authenticated user.
+ */
+export async function GET(request: NextRequest, context: Context) {
+  // Use NextRequest for URL access if needed, otherwise Request
   try {
-    const { deckId } = await context.params; // Await params
-    const userId = await getServerUserId();
-    if (!userId) {
-      const errorResponse: ApiErrorResponse = { error: 'UNAUTHORIZED', message: 'Authentication required.' }; // Updated message
-      return NextResponse.json(errorResponse, { status: 401 });
-    }
-
-    // deckId is now available here after await
-
-    await deleteDeck(userId, deckId);
-
-    // Successfully deleted, return 204 No Content
-    return new NextResponse(null, { status: 204 });
-
-  } catch (error) {
-    console.error('Error deleting deck:', error); // Log the error for debugging
-
-    if (isAppError(error)) {
-      let status = 500;
-      let errorCode: ApiErrorResponse['error'] = 'INTERNAL_SERVER_ERROR'; // Define errorCode here
-
-      if (error instanceof NotFoundError) {
-        status = 404;
-        errorCode = 'NOT_FOUND'; // Assign specific code
-      } else if (error instanceof PermissionError) {
-        status = 403;
-        errorCode = 'FORBIDDEN'; // Assign specific code
-      } else if (error instanceof DatabaseError) {
-        // Keep status 500 for DatabaseError or use a specific code if preferred
-        status = 500;
-        errorCode = 'DATABASE_ERROR'; // Assign specific code
-      } else {
-         // Use error name for other specific AppErrors if needed, otherwise keep default
-        errorCode = error.name as ApiErrorResponse['error']; // Cast, assuming error names match ApiErrorResponse types
-      }
-      // Use specific error codes as defined above
-      const errorResponse: ApiErrorResponse = { error: errorCode, message: error.message }; // Use errorCode
-      return NextResponse.json(errorResponse, { status });
-    }
-
-    // Handle unexpected errors
-    const errorResponse: ApiErrorResponse = { error: 'INTERNAL_SERVER_ERROR', message: 'An unexpected internal server error occurred.' }; // Updated message
-    return NextResponse.json(errorResponse, { status: 500 });
-  }
-}
-
-
-// --- PUT ハンドラ (Result パターン対応) ---
-export async function PUT(
-  request: Request,
-  context: { params: { deckId: string } }
-) {
-  try { // ★ ボディパースや Zod パースでの throw をキャッチする外側の try ★
     // 1. Authentication
     const userId = await getServerUserId();
     if (!userId) {
-      // Use ERROR_CODES for consistency
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
+      throw new AuthenticationError();
     }
 
-    // 2. Extract deckId
-    const { deckId } = await context.params; // Await params as it's async now
+    // 2. Get deckId from URL params
+    const { deckId } = await context.params; // Add await
     if (!deckId) {
-        // Use ERROR_CODES
-        return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId in URL.' }, { status: 400 });
+      throw new ValidationError('Deck ID is missing in the URL path.');
     }
 
-    // 3. Get and Parse Request Body
-    let body: unknown;
+    // 3. Call Service Function (includes ownership check)
+    // getDeckById now throws NotFoundError if not found or no permission
+    const deck: DeckApiResponse = await getDeckById(userId, deckId);
+
+    // 4. Return Success Response
+    return NextResponse.json(deck);
+  } catch (error: unknown) {
+    // Handle errors from auth, param parsing, or service (NotFound, DatabaseError)
+    return handleApiError(error);
+  }
+}
+
+/**
+ * PUT handler to update a specific deck for the authenticated user.
+ */
+export async function PUT(request: Request, context: Context) {
+  try {
+    // 1. Authentication
+    const userId = await getServerUserId();
+    if (!userId) {
+      throw new AuthenticationError();
+    }
+
+    // 2. Get deckId from URL params
+    const { deckId } = await context.params; // Add await
+    if (!deckId) {
+      throw new ValidationError('Deck ID is missing in the URL path.');
+    }
+
+    // 3. Parse and Validate Request Body
+    let payload: DeckUpdatePayload;
     try {
-      body = await request.json();
-    } catch (_e) {
-      // Use ERROR_CODES
-      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
-    }
-
-    // 4. Input Validation (Zod) - safeParse を使用
-    const validation = deckUpdateSchema.safeParse(body);
-    if (!validation.success) {
-      return NextResponse.json(
-        {
-          error: ERROR_CODES.VALIDATION_ERROR,
-          message: 'Invalid input data for update.',
-          // Provide flattened errors for better client-side handling
-          details: validation.error.flatten().fieldErrors,
-        },
-        { status: 400 }
+      const rawBody: unknown = await request.json();
+      const validation = deckUpdateSchema.safeParse(rawBody); // Use update schema
+      if (!validation.success) {
+        throw new ValidationError(
+          'Invalid request body for updating deck.',
+          validation.error.flatten()
+        );
+      }
+      payload = validation.data;
+      // Ensure at least one field is being updated (handled by Zod refine in schema definition)
+    } catch (e) {
+      if (e instanceof ValidationError) {
+        throw e;
+      }
+      console.error('Error parsing/validating update deck request body:', e);
+      throw new ValidationError(
+        'Invalid JSON body or structure for updating deck.'
       );
     }
-    // Type assertion is safe here due to the success check
-    const validatedData = validation.data as DeckUpdatePayload;
 
-    // 5. Service Call (try...catch は不要 for AppErrors handled by Result)
-    const result = await updateDeck(userId, deckId, validatedData);
+    // 4. Call Service Function (returns Result)
+    const updateResult: Result<DeckApiResponse, AppError> = await updateDeck(
+      userId,
+      deckId,
+      payload
+    );
 
-    // 6. Handle Result
-    if (result.ok) {
-      // Success Response
-      return NextResponse.json(result.value, { status: 200 });
-    } else {
-      // Error Handling using centralized handler
-      // result.error is guaranteed to be AppError based on updateDeck signature
-      return handleApiError(result.error);
+    // 5. Check Result
+    if (!updateResult.ok) {
+      // Handle errors from service (NotFound, Conflict, DatabaseError)
+      return handleApiError(updateResult.error);
     }
 
-  } catch (error) {
-     // Catch unexpected errors (e.g., network issues, runtime errors outside service call)
-     // Pass the caught error to the centralized handler
-     return handleApiError(error);
+    // 6. Return Success Response with updated deck
+    return NextResponse.json(updateResult.value);
+  } catch (error: unknown) {
+    // Handle errors from auth, param parsing, validation, or unexpected issues
+    return handleApiError(error);
+  }
+}
+
+/**
+ * DELETE handler to delete a specific deck for the authenticated user.
+ */
+export async function DELETE(request: Request, context: Context) {
+  // request might not be needed but good practice
+  try {
+    // 1. Authentication
+    const userId = await getServerUserId();
+    if (!userId) {
+      throw new AuthenticationError();
+    }
+
+    // 2. Get deckId from URL params
+    const { deckId } = await context.params; // Add await
+    if (!deckId) {
+      throw new ValidationError('Deck ID is missing in the URL path.');
+    }
+
+    // 3. Call Service Function (throws on error)
+    // deleteDeck now includes ownership check and throws NotFoundError or DatabaseError
+    await deleteDeck(userId, deckId);
+
+    // 4. Return Success Response (204 No Content)
+    return new NextResponse(null, { status: 204 });
+  } catch (error: unknown) {
+    // Handle errors from auth, param parsing, or service (NotFound, DatabaseError)
+    return handleApiError(error);
   }
 }

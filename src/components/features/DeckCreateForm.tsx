@@ -12,7 +12,9 @@ interface DeckCreateFormProps {
   onSuccess?: () => void;
 }
 
-export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => {
+export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({
+  onSuccess,
+}) => {
   const {
     register,
     handleSubmit,
@@ -39,8 +41,8 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
         onSuccess?.();
       },
       onError: (err) => {
-        console.error("Form submission error:", err);
-      }
+        console.error('Form submission error:', err);
+      },
     });
   };
 
@@ -49,16 +51,21 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
     if (error instanceof ApiError) {
       errorMessage = `Error: ${error.message} (Status: ${error.status})`;
       // Safely access the machine-readable code from the details property
-      if (typeof error.details === 'object' && error.details !== null && 'error' in error.details) {
+      if (
+        typeof error.details === 'object' &&
+        error.details !== null &&
+        'error' in error.details
+      ) {
         // Now we know error.details is an object with an 'error' property
         // We might still want to check the type of error.details.error if needed
         const errorCode = (error.details as { error?: unknown }).error; // Cast to access
-        if (errorCode) { // Check if errorCode is truthy
-             errorMessage += ` [Code: ${errorCode}]`;
+        if (errorCode) {
+          // Check if errorCode is truthy
+          errorMessage += ` [Code: ${errorCode}]`;
         }
       }
     } else if (error instanceof AuthError) {
-        errorMessage = `Authentication Error: ${error.message}`;
+      errorMessage = `Authentication Error: ${error.message}`;
     } else {
       errorMessage = 'An unexpected error occurred.';
     }
@@ -67,7 +74,10 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div>
-        <label htmlFor="deck-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label
+          htmlFor="deck-name"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
           Deck Name <span className="text-red-500">*</span>
         </label>
         <input
@@ -75,7 +85,9 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
           type="text"
           {...register('name')}
           className={`mt-1 block w-full px-3 py-2 border ${
-            errors.name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+            errors.name
+              ? 'border-red-500'
+              : 'border-gray-300 dark:border-gray-600'
           } rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
           aria-invalid={errors.name ? 'true' : 'false'}
         />
@@ -87,7 +99,10 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
       </div>
 
       <div>
-        <label htmlFor="deck-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label
+          htmlFor="deck-description"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
           Description (Optional)
         </label>
         <textarea
@@ -95,7 +110,9 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
           {...register('description')}
           rows={3}
           className={`mt-1 block w-full px-3 py-2 border ${
-            errors.description ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+            errors.description
+              ? 'border-red-500'
+              : 'border-gray-300 dark:border-gray-600'
           } rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
           aria-invalid={errors.description ? 'true' : 'false'}
         />
@@ -108,8 +125,13 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => 
 
       {/* Display API Error Message */}
       {errorMessage && (
-        <div className="mt-2 p-2 border border-red-300 bg-red-50 dark:bg-red-900/30 rounded-md" role="alert">
-          <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
+        <div
+          className="mt-2 p-2 border border-red-300 bg-red-50 dark:bg-red-900/30 rounded-md"
+          role="alert"
+        >
+          <p className="text-sm text-red-700 dark:text-red-300">
+            {errorMessage}
+          </p>
         </div>
       )}
 
