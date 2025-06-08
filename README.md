@@ -20,6 +20,51 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Environment Variables
+
+Create a `.env.local` file in the root directory and add the following variables:
+
+# Supabase
+
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key # Optional, for server-side admin actions
+
+# Database (Prisma)
+
+DATABASE_URL="postgresql://..." # From Supabase connection string (Pooler recommended)
+DIRECT_URL="postgresql://..." # From Supabase connection string (Direct connection for migrations)
+
+# Google Cloud
+
+GCP_PROJECT_ID="your-gcp-project-id"
+
+# Path to the downloaded service account key JSON file
+
+GOOGLE_APPLICATION_CREDENTIALS="./keys/your-service-account-key.json"
+
+# GCS Bucket for storing TTS audio files
+
+GCS_BUCKET_NAME="your-gcs-bucket-name"
+
+# Vertex AI Gemini API (Required for Explanation/Translation)
+
+VERTEX_AI_REGION="us-central1" # Region where model is available (e.g., us-central1)
+VERTEX_AI_MODEL_NAME="gemini-2.0-flash-001" # Model confirmed to work
+
+# Google Cloud Text-to-Speech (Required for TTS)
+
+# Used by frontend onClick (must start with NEXT*PUBLIC*) OR backend default
+
+NEXT_PUBLIC_TTS_LANGUAGE_CODE_EN="en-US" # Or just TTS_LANGUAGE_CODE_EN if only used backend
+NEXT_PUBLIC_TTS_VOICE_NAME_EN="en-US-Chirp3-HD-Leda" # Or just TTS_VOICE_NAME_EN
+NEXT_PUBLIC_TTS_LANGUAGE_CODE_JA="ja-JP" # Or just TTS_LANGUAGE_CODE_JA
+NEXT_PUBLIC_TTS_VOICE_NAME_JA="ja-JP-Wavenet-B" # Or just TTS_VOICE_NAME_JA
+
+# Other variables (optional)
+
+# e.g., NEXTAUTH_URL, NEXTAUTH_SECRET if using NextAuth
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

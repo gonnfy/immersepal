@@ -9,7 +9,7 @@ const defaultLocale = 'en'; // Needs to be uncommented
 const intlMiddleware = createIntlMiddleware({
   locales: locales,
   defaultLocale: defaultLocale,
-  localePrefix: 'as-needed'
+  localePrefix: 'as-needed',
 });
 
 export async function middleware(req: NextRequest) {
@@ -23,7 +23,10 @@ export async function middleware(req: NextRequest) {
   // If so, respect that and return its response immediately.
   // We check headers because intlMiddleware might add locale-specific headers
   // even without a full redirect/rewrite.
-  if (intlResponse.headers.get('location') || intlResponse.headers.get('x-middleware-rewrite')) {
+  if (
+    intlResponse.headers.get('location') ||
+    intlResponse.headers.get('x-middleware-rewrite')
+  ) {
     return intlResponse;
   }
 
@@ -33,7 +36,7 @@ export async function middleware(req: NextRequest) {
     const supabase = createMiddlewareClient(req, res);
     await supabase.auth.getSession(); // Refreshes session cookie if needed
   } catch (e) {
-    console.error("Supabase middleware error:", e);
+    console.error('Supabase middleware error:', e);
     // Optionally handle the error, maybe return an error response
     // For now, just log it and continue.
   }
@@ -44,12 +47,11 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
-
 // middleware.ts の config 部分 (推奨)
 // Keep the config as it is necessary for the middleware to run
 export const config = {
   matcher: [
     // Match all paths except for specific assets and API routes.
     '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)', // Added 'api|' to exclude API routes
-  ]
+  ],
 };

@@ -20,13 +20,14 @@ export default function DialogTestPage() {
     <div style={{ padding: '20px' }}>
       <h1>Confirmation Dialog Isolation Test</h1>
       <p>
-        If the dialog below appears correctly centered on the screen,
-        the positioning issue is likely caused by interactions with other
-        components or styles in its original context (e.g., within CardList).
+        If the dialog below appears correctly centered on the screen, the
+        positioning issue is likely caused by interactions with other components
+        or styles in its original context (e.g., within CardList).
       </p>
       <p>
-        If the dialog below is still misplaced or cut off, the issue
-        might be with the dialog&apos;s internal styles, Tailwind setup, {/* ★★★ Fixed ' */}
+        If the dialog below is still misplaced or cut off, the issue might be
+        with the dialog&apos;s internal styles, Tailwind setup,{' '}
+        {/* ★★★ Fixed ' */}
         or global CSS conflicts.
       </p>
 
@@ -41,7 +42,8 @@ export default function DialogTestPage() {
       />
 
       <div style={{ height: '150vh', background: '#eee', marginTop: '20px' }}>
-        Scrollable area below the dialog trigger point (dialog should stay centered).
+        Scrollable area below the dialog trigger point (dialog should stay
+        centered).
       </div>
     </div>
   );

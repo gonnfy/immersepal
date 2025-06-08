@@ -1,9 +1,7 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
-
 const withNextIntl = createNextIntlPlugin();
-
 
 const nextConfig: NextConfig = {
   /* other next config options here */
@@ -20,6 +18,5 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
 };
-
 
 export default withNextIntl(nextConfig);

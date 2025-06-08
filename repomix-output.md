@@ -3,20 +3,24 @@ This file is a merged representation of the entire codebase, combined into a sin
 # File Summary
 
 ## Purpose
+
 This file contains a packed representation of the entire repository's contents.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
 
 ## File Format
+
 The content is organized as follows:
+
 1. This summary section
 2. Repository information
 3. Directory structure
 4. Multiple file entries, each consisting of:
-  a. A header with the file path (## File: path/to/file)
-  b. The full contents of the file in a code block
+   a. A header with the file path (## File: path/to/file)
+   b. The full contents of the file in a code block
 
 ## Usage Guidelines
+
 - This file should be treated as read-only. Any changes should be made to the
   original repository files, not this packed version.
 - When processing this file, use the file path to distinguish
@@ -25,6 +29,7 @@ The content is organized as follows:
   the same level of security as you would the original repository.
 
 ## Notes
+
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
 - Files matching patterns in .gitignore are excluded
@@ -34,5051 +39,1277 @@ The content is organized as follows:
 ## Additional Info
 
 # Directory Structure
+
 ```
-app/
-  (api)/
-    api/
-      decks/
-        [deckId]/
-          cards/
-            [cardId]/
-              route.ts
-            route.ts
-          route.ts
-        route.ts
-      test-explanation/
-        route.ts
-      test-translation/
-        route.ts
-      test-tts/
-        route.ts
-  [locale]/
-    (app)/
-      (auth)/
-        login/
-          page.tsx
-        signup/
-          page.tsx
-      (main)/
-        decks/
-          [deckId]/
-            page.tsx
-          page.tsx
-      test/
-        page.tsx
-    layout.tsx
-    page.tsx
-  globals.css
-  layout.tsx
-  page.tsx
-components/
-  features/
-    CardCreateForm.tsx
-    CardEditModal.tsx
-    CardList.tsx
-    DeckCreateForm.tsx
-    DeckCreateModal.tsx
-    DeckEditModal.tsx
-  providers/
-    AuthProvider.tsx
-  ui/
-    ConfirmationDialog.tsx
-  providers.tsx
-hooks/
-  useAuth.ts
-  useCardMutations.ts
-  useCards.ts
-  useDeckMutations.ts
-  useDecks.ts
-i18n/
-  navigation.ts
-  request.ts
-  routing.ts
-lib/
-  auth.ts
-  db.ts
-  errors.ts
-  supabase.ts
-  zod.ts
-services/
-  ai.service.ts
-  card.service.ts
-  deck.service.ts
-types/
-  api.types.ts
-  index.ts
-middleware.ts
+api-design.md
+coding-style.md
+database-design.md
+error-handling.md
+feature-deck-details.md
+functional-requirements.md
+non-functional-requirements.md
+testing-strategy.md
 ```
 
 # Files
 
-## File: app/(api)/api/decks/[deckId]/cards/[cardId]/route.ts
-```typescript
-// src/app/(api)/api/decks/[deckId]/cards/[cardId]/route.ts
-import { NextResponse } from 'next/server';
-import { getServerUserId } from '@/lib/auth';
-import { deleteCard } from '@/services/card.service';
-// isAppError, ValidationError, AppError は handleApiError 等で必要になる可能性を考慮し残置。lint で不要と出たら削除。
-import { ERROR_CODES, handleApiError } from '@/lib/errors';
+## File: api-design.md
 
-interface DeleteParams {
-  deckId: string;
-  cardId: string;
-}
+````markdown
+# API 設計 v1.2 (音声対応・AICardContent 拡充)
 
-/**
- * Deletes a specific card (DELETE)
- */
-export async function DELETE(
-  request: Request, // request object is not used but required by the signature
-  context: { params: DeleteParams }
-) {
-  try {
-    // 1. Authentication: Get user ID
-    const userId = await getServerUserId();
-    if (!userId) {
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
-    }
+**(更新日: 2025-04-29)**
 
-    // 2. Extract parameters
-    const { deckId, cardId } = await context.params;
-    if (!deckId || !cardId) {
-      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId or cardId in URL.' }, { status: 400 });
-    }
+## 1. 目的 (変更なし)
 
-    // 3. Service Call: Attempt to delete the card
-    await deleteCard(userId, deckId, cardId);
+このドキュメントは、本アプリケーションにおける API 設計の一貫性、保守性、およびクライアント（Web, Mobile アプリなど）からの利用しやすさを確保するための原則を定義します。RESTful な考え方を参考にしつつ、Next.js Route Handlers で実装します。
 
-    // 4. Success Response: Return 204 No Content
-    return new NextResponse(null, { status: 204 });
+## 2. クライアントニュートラル (最重要原則 - 変更なし)
 
-  } catch (error) {
-    // 5. Error Handling: Use the centralized handler
-    return handleApiError(error);
-  }
-}
+- API は特定のクライアントに依存せず、Web, Mobile など様々なクライアントから共通利用可能なように設計します。
+- API はデータや機能を提供することに焦点を当て、UI 固有のロジックやフォーマットを含めません。
 
-// --- Imports for PUT ---
-import { updateCard } from '@/services/card.service'; // Import the update service
-import { cardUpdateSchema, CardUpdatePayload } from '@/lib/zod'; // Import the validation schema and payload type
-// import type { Result } from '@/types'; // ★ Removed unused import
+## 3. 認証 (新規追加)
 
-// --- Type for PUT context params (can reuse or define specifically) ---
-interface PutParams {
-  deckId: string;
-  cardId: string;
-}
+- 多くのエンドポイント (特に `/api/decks`, `/api/cards` 以下) は認証が必須です。
+- リクエストヘッダーに `Authorization: Bearer <Supabase JWT>` を含める必要があります。
+- 認証されていない場合はステータスコード `401 Unauthorized` とエラー `{ "error": "AUTHENTICATION_FAILED", "message": "..." }` が返されます (`handleApiError` 形式)。
 
-/**
- * Updates a specific card (PUT)
- */
-export async function PUT(
-  request: Request,
-  context: { params: PutParams }
-) {
-  // No top-level try-catch needed when using Result pattern consistently in service
+## 4. エンドポイント命名規則 (変更なし)
 
-  // 1. Authentication: Get user ID
-  const userId = await getServerUserId();
-  if (!userId) {
-    return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
-  }
+- **言語非依存:** API の URL パスは UI の表示言語から独立させ、ロケールプレフィックスを含みません (例: `/api/decks`)。API ルートハンドラは `src/app/(api)/api/...` 以下に配置します。
+- **リソースベース:** URL は名詞中心 (複数形推奨) で設計します (例: `/api/decks`, `/api/cards`, `/api/ai-contents`)。
+- **階層構造:** リソース間の関連はパスで表現します (例: `/api/decks/{deckId}/cards`, `/api/cards/{cardId}/ai-contents`)。
+- **パスセグメント:** `camelCase` またはリソース名を基本とします。
 
-  // 2. Extract parameters
-  const { deckId, cardId } = await context.params;
-  if (!deckId || !cardId) {
-     return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId or cardId in URL.' }, { status: 400 });
-  }
+## 5. HTTP メソッド (変更なし)
 
-  // 3. Get and Parse Request Body
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch (_e) { // _e は使わないが、catch 節は必要 (Removed unused eslint-disable comment)
-    return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
-  }
+- 標準的な使い方に従います: `GET`(取得), `POST`(作成), `PUT`(置換更新), `DELETE`(削除), `PATCH`(部分更新、任意)。
 
-  // 4. Input Validation (Zod)
-  const validation = cardUpdateSchema.safeParse(body);
-  if (!validation.success) {
-    return NextResponse.json(
+## 6. リクエスト/レスポンス形式 (修正)
+
+- **データ形式:** JSON のみを使用 (`Content-Type: application/json`)。
+- **JSON キー命名規則:** **`camelCase`** で統一します。
+- **レスポンス構造 (データモデル変更):**
+
+  - カード (`Card`) 情報を返す API では、以前の `explanation`, `translation`, `frontAudioUrl`, `backAudioUrl` フィールドは含まれません。
+  - 代わりに、関連する AI 生成コンテンツ（解説、翻訳、音声パス）は `aiContents` というネストされた配列として含まれる形を基本とします。各要素には `contentType` (種類), `language` (言語), `content` (内容/パス) が含まれます。
+  - **カード取得レスポンス例 (`GET /api/decks/{deckId}/cards` の一部 - 更新版):**
+
+  ```json
+  {
+    "data": [
       {
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: 'Invalid input data.',
-        details: validation.error.flatten().fieldErrors,
-      },
-      { status: 400 }
-    );
-  }
-
-  // Type assertion after successful validation
-  const validatedData = validation.data as CardUpdatePayload;
-
-  // 5. Service Call: Attempt to update the card using the Result pattern
-  const result = await updateCard(userId, deckId, cardId, validatedData);
-
-  // 6. Handle Result
-  if (result.ok) {
-    return NextResponse.json(result.value, { status: 200 });
-  } else {
-    return handleApiError(result.error);
-  }
-}
-```
-
-## File: app/(api)/api/decks/[deckId]/cards/route.ts
-```typescript
-// src/app/[locale]/(api)/api/decks/[deckId]/cards/route.ts (修正後の完全なコード)
-
-import { NextResponse } from 'next/server';
-import { z, ZodError } from 'zod'; // Import ZodError
-import { createCard, getCardsByDeckId } from '@/services/card.service';
-import { handleApiError, AppError, ERROR_CODES } from '@/lib/errors'; // Import AppError and ERROR_CODES
-import { getServerUserId } from '@/lib/auth';
-
-// Define the expected request body schema
-const createCardSchema = z.object({
-  front: z.string().min(1, 'Front text cannot be empty'),
-  back: z.string().min(1, 'Back text cannot be empty'),
-});
-
-// --- POST Handler (カード作成) ---
-export async function POST(
-  request: Request,
-  context: { params: { deckId: string } }
-) {
-  try {
-    const { deckId } = await context.params;
-
-    if (!deckId) {
-      return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
-    }
-
-    const body = await request.json();
-    const validation = createCardSchema.safeParse(body);
-
-    if (!validation.success) {
-      return NextResponse.json({ errors: validation.error.errors }, { status: 400 });
-    }
-
-    const { front, back } = validation.data;
-
-    // Get user ID
-    const userId = await getServerUserId();
-    if (!userId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    // Call the service function to create the card, passing the userId
-    const newCard = await createCard(userId, { deckId, front, back });
-
-    return NextResponse.json(newCard, { status: 201 });
-  } catch (error) {
-     // Use your centralized error handler
-    return handleApiError(error);
-  }
-}
-
-// --- GET Handler (カード一覧取得) ---
-export async function GET(
-  request: Request,
-  context: { params: { deckId: string } }
-) {
-  try {
-    // --- 4.1. クエリパラメータの読み取りと検証 ---
-    const { searchParams } = new URL(request.url);
-
-    const querySchema = z.object({
-        limit: z.coerce.number().int().min(1).max(100).default(10), // デフォルト10, 最大100
-        offset: z.coerce.number().int().min(0).default(0),       // デフォルト0
-    });
-
-    let validatedQuery: { limit: number; offset: number };
-    try {
-      validatedQuery = querySchema.parse({
-        limit: searchParams.get('limit'),
-        offset: searchParams.get('offset'),
-      });
-    } catch (err) {
-       if (err instanceof ZodError) {
-         return NextResponse.json({
-           error: ERROR_CODES.VALIDATION_ERROR,
-           message: 'Invalid query parameters for pagination.',
-           details: err.flatten().fieldErrors,
-         }, { status: 400 });
-       }
-       // Use handleApiError for other parsing errors
-       return handleApiError(new AppError('Failed to parse pagination query parameters', 400, ERROR_CODES.VALIDATION_ERROR));
-    }
-
-    // --- ここまでで limit と offset が検証済み ---
-    const { limit, offset } = validatedQuery; // Define variables *after* validation
-
-    // ★★★ context.params を await してから deckId を取得 ★★★
-    const { deckId } = await context.params;
-
-    if (!deckId) {
-      return NextResponse.json({ error: 'Deck ID is required' }, { status: 400 });
-    }
-
-    // 1. Authentication/Authorization
-    const userId = await getServerUserId();
-    if (!userId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    // 2. Call Service Function
-    // --- 4.2. Service 関数の呼び出し変更 ---
-    const { data: cards, totalItems } = await getCardsByDeckId(userId, deckId, { limit, offset });
-
-    // 3. Success Response
-    // --- 4.3. ページネーションレスポンスの構築 ---
-    const baseUrl = `/api/decks/${deckId}/cards`;
-    const selfLink = `${baseUrl}?offset=${offset}&limit=${limit}`;
-    let nextLink: string | null = null;
-    if (offset + limit < totalItems) {
-      nextLink = `${baseUrl}?offset=${offset + limit}&limit=${limit}`;
-    }
-    let previousLink: string | null = null;
-    if (offset > 0) {
-      const prevOffset = Math.max(0, offset - limit);
-      previousLink = `${baseUrl}?offset=${prevOffset}&limit=${limit}`;
-    }
-
-    const responseBody = {
-      data: cards,
-      pagination: {
-        offset: offset,
-        limit: limit,
-        totalItems: totalItems,
-        _links: {
-          self: selfLink,
-          next: nextLink,
-          previous: previousLink,
-        },
-      },
-    };
-
-    // --- 4.4. レスポンスの返却変更 ---
-    return NextResponse.json(responseBody, { status: 200 });
-
-  } catch (error) {
-    // 4. Error Handling
-    return handleApiError(error);
-  }
-}
-```
-
-## File: app/(api)/api/decks/[deckId]/route.ts
-```typescript
-import { NextResponse } from 'next/server';
-import { getServerUserId } from '@/lib/auth'; // Adjusted import path
-import { deleteDeck, getDeckById } from '@/services/deck.service'; // Adjusted import path - Added getDeckById
-import { isAppError, NotFoundError, PermissionError, DatabaseError } from '@/lib/errors'; // Adjusted import path
-import { ApiErrorResponse } from '@/types/api.types'; // Added import for error response type
-import { deckUpdateSchema, DeckUpdatePayload } from '@/lib/zod'; // Adjusted import path
-import { updateDeck } from '@/services/deck.service'; // Adjusted import path
-import { ERROR_CODES, handleApiError } from '@/lib/errors'; // Adjusted import path
-
-// GET handler to retrieve a specific deck by ID
-export async function GET(
-  request: Request, // Keep request parameter as per Next.js convention
-  context: { params: { deckId: string } } // Use context, removed locale
-) {
-  try {
-    const userId = await getServerUserId();
-    if (!userId) {
-      const errorResponse: ApiErrorResponse = { error: 'UNAUTHORIZED', message: 'Authentication required.' };
-      return NextResponse.json(errorResponse, { status: 401 });
-    }
-
-    const { deckId } = context.params; // Await params
-
-    // Validate deckId format if necessary (e.g., using a regex or library)
-    // Example: if (!isValidUUID(deckId)) { return NextResponse.json({ error: 'BAD_REQUEST', message: 'Invalid Deck ID format.' }, { status: 400 }); }
-
-    const deckData = await getDeckById(userId, deckId);
-
-    // Successfully retrieved, return deck data
-    return NextResponse.json(deckData, { status: 200 });
-
-  } catch (error) {
-    console.error('Error fetching deck:', error); // Log the error server-side
-
-    if (isAppError(error)) {
-      let status = 500;
-      let errorCode: ApiErrorResponse['error'] = 'INTERNAL_SERVER_ERROR'; // Default error code
-
-      if (error instanceof NotFoundError) {
-        status = 404;
-        errorCode = 'NOT_FOUND';
-      } else if (error instanceof PermissionError) {
-        status = 403;
-        errorCode = 'FORBIDDEN';
-      } else if (error instanceof DatabaseError) {
-        status = 500;
-        errorCode = 'DATABASE_ERROR';
-      } else {
-        // Use error name for other specific AppErrors if needed, otherwise keep default
-        errorCode = error.name as ApiErrorResponse['error']; // Cast, assuming error names match ApiErrorResponse types
+        "id": "clxyz123...",
+        "front": "apple",
+        "back": "りんご",
+        "deckId": "deck-abc",
+        "createdAt": "2025-04-29T00:00:00.000Z",
+        "updatedAt": "2025-04-29T01:00:00.000Z",
+        "interval": 0,
+        "easeFactor": 2.5,
+        "nextReviewAt": "2025-04-29T00:00:00.000Z",
+        // frontAudioUrl, backAudioUrl は削除
+        "aiContents": [
+          {
+            "id": "aic-abc...",
+            "contentType": "EXPLANATION",
+            "language": "en",
+            "content": "\"Apple\" is a type of round fruit...", // テキスト
+            "createdAt": "2025-04-29T01:00:00.000Z",
+            "updatedAt": "2025-04-29T01:00:00.000Z"
+          },
+          {
+            "id": "aic-def...",
+            "contentType": "TRANSLATION",
+            "language": "ja",
+            "content": "りんご", // テキスト
+            "createdAt": "2025-04-29T01:05:00.000Z",
+            "updatedAt": "2025-04-29T01:05:00.000Z"
+          },
+          {
+            "id": "aic-ghi...",
+            "contentType": "AUDIO_PRIMARY",
+            "language": "en-US",
+            "content": "tts-audio/apple-en-us-uuid.mp3", // GCS パス
+            "createdAt": "2025-04-29T01:10:00.000Z",
+            "updatedAt": "2025-04-29T01:10:00.000Z"
+          },
+          {
+            "id": "aic-jkl...",
+            "contentType": "AUDIO_SECONDARY",
+            "language": "ja-JP",
+            "content": "tts-audio/ringo-ja-jp-uuid.mp3", // GCS パス
+            "createdAt": "2025-04-29T01:15:00.000Z",
+            "updatedAt": "2025-04-29T01:15:00.000Z"
+          }
+          // 他の言語の解説や音声があればここに追加される
+        ]
       }
-
-      const errorResponse: ApiErrorResponse = { error: errorCode, message: error.message };
-      return NextResponse.json(errorResponse, { status });
+      // ... more cards
+    ],
+    "pagination": {
+      /* ... */
     }
-
-    // Handle unexpected errors
-    const errorResponse: ApiErrorResponse = { error: 'INTERNAL_SERVER_ERROR', message: 'An unexpected internal server error occurred.' };
-    return NextResponse.json(errorResponse, { status: 500 });
   }
-}
+  ```
 
+## 7. データ転送オブジェクト (DTO) と型定義 (修正)
 
-export async function DELETE(
-  request: Request, // Keep request parameter as per Next.js convention, though unused
-  context: { params: { deckId: string } } // Use context, removed locale
-) {
-  try {
-    const { deckId } = await context.params; // Await params
-    const userId = await getServerUserId();
-    if (!userId) {
-      const errorResponse: ApiErrorResponse = { error: 'UNAUTHORIZED', message: 'Authentication required.' }; // Updated message
-      return NextResponse.json(errorResponse, { status: 401 });
-    }
+- API の Request Body および Response Body の型は `src/types/api.types.ts` で明確に定義します。
+- **データモデル変更に伴う型定義の更新:**
+  - `CardApiResponse` 型から `frontAudioUrl`, `backAudioUrl` を削除し、`aiContents: AICardContentApiResponse[]` を追加。
+  - 新しい `AICardContentApiResponse` 型を定義。
+  - `DeckApiResponse` に `cardCount` を追加。
+- **更新後の型定義例 (`src/types/api.types.ts` で定義される想定):**
 
-    // deckId is now available here after await
-
-    await deleteDeck(userId, deckId);
-
-    // Successfully deleted, return 204 No Content
-    return new NextResponse(null, { status: 204 });
-
-  } catch (error) {
-    console.error('Error deleting deck:', error); // Log the error for debugging
-
-    if (isAppError(error)) {
-      let status = 500;
-      let errorCode: ApiErrorResponse['error'] = 'INTERNAL_SERVER_ERROR'; // Define errorCode here
-
-      if (error instanceof NotFoundError) {
-        status = 404;
-        errorCode = 'NOT_FOUND'; // Assign specific code
-      } else if (error instanceof PermissionError) {
-        status = 403;
-        errorCode = 'FORBIDDEN'; // Assign specific code
-      } else if (error instanceof DatabaseError) {
-        // Keep status 500 for DatabaseError or use a specific code if preferred
-        status = 500;
-        errorCode = 'DATABASE_ERROR'; // Assign specific code
-      } else {
-         // Use error name for other specific AppErrors if needed, otherwise keep default
-        errorCode = error.name as ApiErrorResponse['error']; // Cast, assuming error names match ApiErrorResponse types
-      }
-      // Use specific error codes as defined above
-      const errorResponse: ApiErrorResponse = { error: errorCode, message: error.message }; // Use errorCode
-      return NextResponse.json(errorResponse, { status });
-    }
-
-    // Handle unexpected errors
-    const errorResponse: ApiErrorResponse = { error: 'INTERNAL_SERVER_ERROR', message: 'An unexpected internal server error occurred.' }; // Updated message
-    return NextResponse.json(errorResponse, { status: 500 });
-  }
-}
-
-
-// --- PUT ハンドラ (Result パターン対応) ---
-export async function PUT(
-  request: Request,
-  context: { params: { deckId: string } }
-) {
-  try { // ★ ボディパースや Zod パースでの throw をキャッチする外側の try ★
-    // 1. Authentication
-    const userId = await getServerUserId();
-    if (!userId) {
-      // Use ERROR_CODES for consistency
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
-    }
-
-    // 2. Extract deckId
-    const { deckId } = await context.params; // Await params as it's async now
-    if (!deckId) {
-        // Use ERROR_CODES
-        return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Missing deckId in URL.' }, { status: 400 });
-    }
-
-    // 3. Get and Parse Request Body
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch (_e) {
-      // Use ERROR_CODES
-      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' }, { status: 400 });
-    }
-
-    // 4. Input Validation (Zod) - safeParse を使用
-    const validation = deckUpdateSchema.safeParse(body);
-    if (!validation.success) {
-      return NextResponse.json(
-        {
-          error: ERROR_CODES.VALIDATION_ERROR,
-          message: 'Invalid input data for update.',
-          // Provide flattened errors for better client-side handling
-          details: validation.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
-    }
-    // Type assertion is safe here due to the success check
-    const validatedData = validation.data as DeckUpdatePayload;
-
-    // 5. Service Call (try...catch は不要 for AppErrors handled by Result)
-    const result = await updateDeck(userId, deckId, validatedData);
-
-    // 6. Handle Result
-    if (result.ok) {
-      // Success Response
-      return NextResponse.json(result.value, { status: 200 });
-    } else {
-      // Error Handling using centralized handler
-      // result.error is guaranteed to be AppError based on updateDeck signature
-      return handleApiError(result.error);
-    }
-
-  } catch (error) {
-     // Catch unexpected errors (e.g., network issues, runtime errors outside service call)
-     // Pass the caught error to the centralized handler
-     return handleApiError(error);
-  }
-}
-```
-
-## File: app/(api)/api/decks/route.ts
 ```typescript
-// src/app/(api)/api/decks/route.ts (isAppError, ValidationError 削除)
+// src/types/api.types.ts (抜粋・更新版)
+import { AiContentType } from '@prisma/client'; // PrismaからEnumをインポート
 
-import { NextResponse } from 'next/server';
-import { getServerUserId } from '@/lib/auth';
-import { deckCreateSchema, DeckCreatePayload } from '@/lib/zod';
-import { createDeck, getAllDecks } from '@/services/deck.service';
-// ★ isAppError, ValidationError を削除 ★ AppError は handleApiError で暗黙的に使われる可能性を考慮し一旦残す
-import { AppError, handleApiError, ERROR_CODES } from '@/lib/errors';
-import { z, ZodError } from 'zod';
-
-/**
- * 新しいデッキを作成する (POST)
- */
-export async function POST(request: Request) {
-  try {
-    const userId = await getServerUserId();
-    if (!userId) {
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
-    }
-
-    let body: DeckCreatePayload;
-    try {
-      body = await request.json();
-    } catch (_e) { // Removed unused eslint-disable comment
-      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON format.' }, { status: 400 });
-    }
-
-    const validatedData = deckCreateSchema.parse(body);
-    const newDeck = await createDeck(userId, validatedData);
-    return NextResponse.json(newDeck, { status: 201 });
-
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: 'Invalid input data.',
-        details: error.flatten().fieldErrors
-       }, { status: 400 });
-    }
-    return handleApiError(error);
-  }
+// AICardContent の API レスポンス型
+export interface AICardContentApiResponse {
+  id: string;
+  contentType: AiContentType; // EXPLANATION, TRANSLATION, AUDIO_*
+  language: string; // 'en', 'ja', 'en-US', 'ja-JP' etc.
+  content: string; // Text or GCS Path
+  createdAt: string; // ISO 8601 string
+  updatedAt: string; // ISO 8601 string
 }
 
-/**
- * ログインユーザーのデッキ一覧を取得する (GET - ページネーション対応版)
- */
-export async function GET(request: Request) {
-  try {
-    const userId = await getServerUserId();
-    if (!userId) {
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-
-    const querySchema = z.object({
-        limit: z.coerce.number().int().min(1).max(100).default(10),
-        offset: z.coerce.number().int().min(0).default(0),
-    });
-
-    let validatedQuery: { limit: number; offset: number };
-    try {
-      validatedQuery = querySchema.parse({
-        limit: searchParams.get('limit'),
-        offset: searchParams.get('offset'),
-      });
-    } catch (err) {
-       if (err instanceof ZodError) {
-         return NextResponse.json({
-           error: ERROR_CODES.VALIDATION_ERROR,
-           message: 'Invalid query parameters.',
-           details: err.flatten().fieldErrors,
-         }, { status: 400 });
-       }
-       // ★ AppError はここで new しているのでインポートが必要 ★
-       return handleApiError(new AppError('Failed to parse query parameters', 400, ERROR_CODES.VALIDATION_ERROR));
-    }
-
-    const { limit, offset } = validatedQuery;
-
-    const { data: decks, totalItems } = await getAllDecks(userId, { limit, offset });
-
-    const baseUrl = '/api/decks';
-    const selfLink = `${baseUrl}?offset=${offset}&limit=${limit}`;
-    let nextLink: string | null = null;
-    if (offset + limit < totalItems) {
-      nextLink = `${baseUrl}?offset=${offset + limit}&limit=${limit}`;
-    }
-    let previousLink: string | null = null;
-    if (offset > 0) {
-      const prevOffset = Math.max(0, offset - limit);
-      previousLink = `${baseUrl}?offset=${prevOffset}&limit=${limit}`;
-    }
-
-    const responseBody = {
-      data: decks,
-      pagination: {
-        offset: offset,
-        limit: limit,
-        totalItems: totalItems,
-        _links: {
-          self: selfLink,
-          next: nextLink,
-          previous: previousLink,
-        },
-      },
-    };
-
-    return NextResponse.json(responseBody, { status: 200 });
-
-  } catch (error) {
-    return handleApiError(error);
-  }
+// 更新後の Card の API レスポンス型
+export interface CardApiResponse {
+  id: string;
+  front: string;
+  back: string;
+  deckId: string;
+  createdAt: string; // ISO 8601 string
+  updatedAt: string; // ISO 8601 string
+  interval: number;
+  easeFactor: number;
+  nextReviewAt: string; // ISO 8601 string
+  // frontAudioUrl, backAudioUrl は削除
+  aiContents: AICardContentApiResponse[]; // ネストされた配列
 }
-```
 
-## File: app/(api)/api/test-explanation/route.ts
-```typescript
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { handleApiError, ValidationError } from "@/lib/errors"; // 必要に応じて AppError もインポート
-import { generateExplanation } from "@/services/ai.service"; // 作成したサービス関数をインポート
+// PaginatedCardsResponse も CardApiResponse を使うように更新
+export interface PaginatedCardsResponse
+  extends PaginatedResponse<CardApiResponse> {}
 
-// リクエストボディのスキーマ定義
-const testExplanationSchema = z.object({
-  text: z.string().min(1, "Text to explain cannot be empty."),
-  language: z
-    .string()
-    .min(2, "Language code must be at least 2 characters.")
-    .max(10), // 簡単な言語コードチェック
-  // 必要なら modelName もリクエスト可能にする
-  // modelName: z.string().optional(),
-});
-
-// リクエストボディの型
-type TestExplanationPayload = z.infer<typeof testExplanationSchema>;
-
-/**
- * POST handler for testing the generateExplanation service.
- * Expects a JSON body with "text" and "language".
- */
-export async function POST(request: Request) {
-  try {
-    // 1. Parse Request Body
-    let body: TestExplanationPayload;
-    try {
-      // ★ ボディが空の場合も考慮して unknown で受ける ★
-      const rawBody: unknown = await request.json();
-      // ★ スキーマでパース＆バリデーション ★
-      const validation = testExplanationSchema.safeParse(rawBody);
-      if (!validation.success) {
-        // バリデーションエラーの詳細を返す
-        throw new ValidationError(
-          "Invalid request body.",
-          validation.error.flatten(),
-        );
-      }
-      body = validation.data; // 型アサーションなしでOK
-    } catch (e) {
-      // JSON パースエラーまたは Zod バリデーション以外のエラー
-      if (e instanceof ValidationError) {
-        throw e; // そのままスローして handleApiError で処理
-      }
-      console.error("Error parsing or validating request body:", e);
-      // JSON パース失敗時などは ValidationError を new して投げる
-      throw new ValidationError("Invalid JSON body or structure.");
-    }
-
-    // 2. Call the Service Function
-    const { text, language } = body;
-    // const model = body.modelName; // modelName を受け取る場合
-
-    // generateExplanation は成功すれば文字列を、失敗すれば AppError を throw する想定
-    const explanation = await generateExplanation(text, language /*, model */);
-
-    // 3. Success Response
-    return NextResponse.json({ success: true, explanation: explanation });
-  } catch (error: unknown) {
-    // 4. Error Handling (Centralized)
-    // generateExplanation が throw した AppError や、
-    // このハンドラ内で throw した ValidationError を処理
-    return handleApiError(error);
-  }
-}
-```
-
-## File: app/(api)/api/test-translation/route.ts
-```typescript
-import { NextResponse } from "next/server";
-import { z } from "zod"; // Zod をインポート
-import { handleApiError, ValidationError } from "@/lib/errors"; // エラーハンドラとバリデーションエラーをインポート
-import { generateTranslation } from "@/services/ai.service"; // 作成した翻訳サービス関数をインポート
-
-// リクエストボディのスキーマ定義 (Zod)
-const testTranslationSchema = z.object({
-  text: z.string().min(1, "Text to translate cannot be empty."),
-  sourceLanguage: z
-    .string()
-    .min(2, 'Source language must be provided (e.g., "en" or "English").'),
-  targetLanguage: z
-    .string()
-    .min(2, 'Target language must be provided (e.g., "ja" or "Japanese").'),
-  // modelName: z.string().optional(), // オプションでモデル名を上書きしたい場合
-});
-
-// リクエストボディの型 (Zodから推論)
-type TestTranslationPayload = z.infer<typeof testTranslationSchema>;
-
-/**
- * POST handler for testing the generateTranslation service.
- * Expects a JSON body with "text", "sourceLanguage", and "targetLanguage".
- */
-export async function POST(request: Request) {
-  try {
-    // 1. リクエストボディのパースとバリデーション
-    let body: TestTranslationPayload;
-    try {
-      const rawBody: unknown = await request.json();
-      // Zod を使ってバリデーション
-      const validation = testTranslationSchema.safeParse(rawBody);
-      if (!validation.success) {
-        // Zod のエラー詳細を含めて ValidationError を throw
-        throw new ValidationError(
-          "Invalid request body.",
-          validation.error.flatten(),
-        );
-      }
-      body = validation.data; // バリデーション成功後のデータを格納
-    } catch (e) {
-      // バリデーションエラーはそのまま rethrow
-      if (e instanceof ValidationError) {
-        throw e;
-      }
-      // JSON パースエラーなどの場合
-      console.error("Error parsing or validating request body:", e);
-      throw new ValidationError("Invalid JSON body or structure.");
-    }
-
-    // 2. サービス関数呼び出し
-    const { text, sourceLanguage, targetLanguage } = body;
-    // const model = body.modelName; // モデル名をリクエストで指定する場合
-
-    // generateTranslation を呼び出し (成功すれば翻訳結果、失敗すればエラーが throw される)
-    const translation = await generateTranslation(
-      text,
-      sourceLanguage,
-      targetLanguage,
-      // model // モデル名を渡す場合
-    );
-
-    // 3. 成功レスポンス
-    return NextResponse.json({ success: true, translation: translation });
-  } catch (error: unknown) {
-    // 4. エラーハンドリング (handleApiError が AppError を処理)
-    return handleApiError(error);
-  }
-}
-```
-
-## File: app/(api)/api/test-tts/route.ts
-```typescript
-// src/app/(api)/api/test-tts/route.ts
-import { NextResponse } from "next/server";
-import { generateTtsAudio } from "@/services/ai.service"; // 作成した関数をインポート
-import { v4 as uuidv4 } from "uuid"; // ユニークなファイル名生成用 (必要なら bun add uuid @types/uuid)
-
-export async function GET(_request: Request) {
-  try {
-    const testText = "こんにちは、これは音声合成のテストです。"; // 音声にしたいテキスト
-    // GCS 上でファイル名が重複しないように UUID やタイムスタンプを使う
-    const testFilename = `test-audio-${uuidv4()}`; // 例: test-audio-xxxxxxxx-xxxx...
-
-    console.log(`[Test API] Calling generateTtsAudio with text: "${testText}"`);
-    const audioUrl = await generateTtsAudio(testText, testFilename);
-
-    if (audioUrl) {
-      console.log(`[Test API] Success! Audio URL: ${audioUrl}`);
-      return NextResponse.json({
-        success: true,
-        url: audioUrl,
-        message: "TTS generated and uploaded successfully.",
-      });
-    } else {
-      console.error("[Test API] Failed to generate audio URL.");
-      return NextResponse.json(
-        { success: false, error: "Failed to generate TTS audio URL." },
-        { status: 500 },
-      );
-    }
-  } catch (error) {
-    console.error("[Test API] Error occurred:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "An unexpected error occurred during TTS test.",
-      },
-      { status: 500 },
-    );
-  }
-}
-```
-
-## File: app/[locale]/(app)/(auth)/login/page.tsx
-```typescript
-// src/app/[locale]/(app)/(auth)/login/page.tsx
-'use client'
-
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/useAuth';
-import { Link } from '@/i18n/navigation';
-
-export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
-  const { signIn } = useAuth();
-  const [message, setMessage] = useState<string | null>(null)
-
-  const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setMessage(null)
-
-    const { error: signInError } = await signIn(email, password);
-
-    if (signInError) {
-      setError(signInError.message)
-      setLoading(false)
-    } else {
-      setMessage('Login successful! Redirecting...')
-      // Redirect to the main decks page after login
-      router.push('/decks')
-    }
-  }
-
-
-  return (
-    <div style={{ maxWidth: '400px', margin: 'auto', paddingTop: '50px' }}>
-      <h2>Log In</h2>
-      <form onSubmit={handleSignIn}>
-        <div>
-          <label htmlFor="email">Email:</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
-          />
-        </div>
-        <div>
-          <label htmlFor="password">Password:</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: '100%', padding: '8px', marginBottom: '20px' }}
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ padding: '10px 20px', cursor: loading ? 'not-allowed' : 'pointer' }}
-        >
-          {loading ? 'Logging In...' : 'Log In'}
-        </button>
-      </form>
-      {error && <p style={{ color: 'red', marginTop: '10px' }}>Error: {error}</p>}
-      {message && <p style={{ color: 'green', marginTop: '10px' }}>{message}</p>}
-      <p style={{ marginTop: '20px' }}>
-        {/* ★★★ Fixed ' error ★★★ */}
-        Don&apos;t have an account? <Link href="/signup">Sign Up</Link>
-      </p>
-      {/* <p style={{ marginTop: '10px' }}>
-        <Link href="/forgot-password">Forgot Password?</Link>
-      </p> */}
-    </div>
-  )
-}
-```
-
-## File: app/[locale]/(app)/(auth)/signup/page.tsx
-```typescript
-// src/app/[locale]/(app)/(auth)/signup/page.tsx
-'use client'
-
-import { useState } from 'react'
-// import { useRouter } from 'next/navigation' // ★ Removed unused import
-import { useAuth } from '@/hooks/useAuth';
-import { Link } from '@/i18n/navigation';
-
-export default function SignUpPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  // const router = useRouter() // ★ Removed unused variable
-  const { signUp } = useAuth();
-
-  const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setMessage(null)
-
-    const { error: signUpError } = await signUp(email, password);
-
-    if (signUpError) {
-      setError(signUpError.message)
-    } else {
-      setMessage('Sign up successful! Please check your email for verification.')
-    }
-
-    setLoading(false)
-  }
-
-  return (
-    <div style={{ maxWidth: '400px', margin: 'auto', paddingTop: '50px' }}>
-      <h2>Sign Up</h2>
-      <form onSubmit={handleSignUp}>
-         <div>
-           <label htmlFor="email">Email:</label>
-           <input
-             id="email"
-             type="email"
-             value={email}
-             onChange={(e) => setEmail(e.target.value)}
-             required
-             style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
-           />
-         </div>
-         <div>
-           <label htmlFor="password">Password:</label>
-           <input
-             id="password"
-             type="password"
-             value={password}
-             onChange={(e) => setPassword(e.target.value)}
-             required
-             minLength={6}
-             style={{ width: '100%', padding: '8px', marginBottom: '20px' }}
-           />
-         </div>
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ padding: '10px 20px', cursor: loading ? 'not-allowed' : 'pointer' }}
-        >
-          {loading ? 'Signing Up...' : 'Sign Up'}
-        </button>
-      </form>
-      {error && <p style={{ color: 'red', marginTop: '10px' }}>Error: {error}</p>}
-      {message && <p style={{ color: 'green', marginTop: '10px' }}>{message}</p>}
-      <p style={{ marginTop: '20px' }}>
-        Already have an account? <Link href="/login">Log In</Link>
-      </p>
-    </div>
-  )
-}
-```
-
-## File: app/[locale]/(app)/(main)/decks/[deckId]/page.tsx
-```typescript
-import { notFound } from 'next/navigation'; // Import notFound for 404 handling
-import { getServerUserId } from '@/lib/auth'; // Import function to get user ID
-import { getDeckById } from '@/services/deck.service'; // Import the service function
-import { NotFoundError, PermissionError, DatabaseError, isAppError } from '@/lib/errors';
-import { CardList } from '@/components/features/CardList'; // Import the CardList component
-import { CardCreateForm } from '@/components/features/CardCreateForm'; // Import the CardCreateForm component
-
-// Define the expected type based on the *updated* service function (no cards included)
-type DeckData = {
+// DeckApiResponse (cardCount 追加)
+export interface DeckApiResponse {
   id: string;
   name: string;
   description: string | null;
-  createdAt: Date;
-  updatedAt: Date;
   userId: string;
-  // 'cards' property is removed
-};
-
-
-interface DeckDetailPageProps {
-  // Indicate that params might be a promise that needs resolving
-  params: Promise<{
-    deckId: string;
-    locale: string; // Locale might be needed for translations later
-  }> | {
-    deckId: string;
-    locale: string;
-  };
+  cardCount: number; // ★追加
+  createdAt: string; // ISO 8601 string
+  updatedAt: string; // ISO 8601 string
 }
 
-export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
-  // Await params before accessing its properties
-  const resolvedParams = await params;
-  const { deckId } = resolvedParams;
+export interface PaginatedDecksResponse
+  extends PaginatedResponse<DeckApiResponse> {}
 
-  let deck: DeckData | null = null; // Use DeckData type (without cards)
-  let errorInfo: { message: string; code?: string } | null = null;
-
-  try {
-    // 1. Get User ID directly in the RSC
-    const userId = await getServerUserId();
-    if (!userId) {
-      // Handle unauthenticated user - maybe redirect or show a specific message
-      // For now, treating as a permission error for simplicity
-      throw new PermissionError('Authentication required to view this deck.');
-    }
-
-    // Fetch deck data (without cards)
-    deck = await getDeckById(userId, deckId);
-
-  } catch (error) {
-    console.error('Error in DeckDetailPage:', error); // Log the error
-
-    // --- Error Handling (Directly from Service Errors) ---
-    if (error instanceof NotFoundError) {
-      notFound(); // Trigger Next.js 404 page
-    } else if (error instanceof PermissionError) {
-      errorInfo = { message: error.message, code: 'FORBIDDEN' };
-    } else if (error instanceof DatabaseError) {
-      errorInfo = { message: 'A database error occurred while loading the deck.', code: 'DATABASE_ERROR' };
-    } else if (isAppError(error)) {
-       // Catch other AppErrors
-       errorInfo = { message: error.message, code: error.name };
-    }
-     else {
-      // Handle unexpected errors
-      errorInfo = { message: 'An unexpected error occurred.', code: 'INTERNAL_SERVER_ERROR' };
-    }
-  }
-
-  // --- Render Error State ---
-  if (errorInfo) {
-    return <div className="p-4 text-red-600">Error loading deck: {errorInfo.message} {errorInfo.code ? `(Code: ${errorInfo.code})` : ''}</div>;
-  }
-
-  // --- Render Success State ---
-  // If we reach here and deck is still null, something went wrong (should be caught above)
-  if (!deck) {
-     return <div className="p-4 text-red-600">Error loading deck: Deck data is unavailable.</div>;
-  }
-
-  return (
-    <div className="container mx-auto p-4">
-      {/* Deck Details */}
-      <h1 className="text-3xl font-bold mb-2">{deck.name}</h1>
-      <p className="text-gray-600 mb-6">{deck.description || 'No description provided.'}</p>
-
-      {/* Separator or spacing */}
-      <hr className="my-6" />
-
-      {/* Add New Card Form (Client Component) */}
-      <div className="mb-8"> {/* Add some margin below the form */}
-        <h2 className="text-2xl font-semibold mb-4">Add New Card</h2>
-        <CardCreateForm deckId={deck.id} />
-      </div>
-
-      {/* Render the CardList component (Client Component) */}
-      <h2 className="text-2xl font-semibold mb-4">Cards in this Deck</h2>
-      <CardList deckId={deck.id} />
-
-      {/* Card rendering is now handled by the CardList component */}
-    </div>
-  );
-}
-```
-
-## File: app/[locale]/(app)/(main)/decks/page.tsx
-```typescript
-// src/app/[locale]/(app)/(main)/decks/page.tsx
-'use client';
-
-import React, { useState, useEffect } from 'react'; // ★ Add useEffect
-import { createPortal } from 'react-dom'; // ★ Add createPortal
-// import { useParams } from 'next/navigation'; // ★ Removed unused import
-import { useDecks } from '@/hooks/useDecks';
-import { useDeleteDeck } from '@/hooks/useDeckMutations';
-import { DeckCreateForm } from '@/components/features/DeckCreateForm';
-import { DeckEditModal } from '@/components/features/DeckEditModal'; // ★ Add DeckEditModal import
-import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { type DeckApiResponse } from '@/types'; // Import types
-import Link from 'next/link';
-import { useAuth } from '@/hooks/useAuth';
-
-function DecksPage() {
-  const { isLoading: authLoading } = useAuth();
-
-  const ITEMS_PER_PAGE = 10;
-  const [offset, setOffset] = useState(0);
-
-  const { decks, pagination, isLoading: decksIsLoading, isFetching: decksIsFetching, error: decksError } = useDecks({
-    offset: offset,
-    limit: ITEMS_PER_PAGE,
-  });
-
-  const { mutate: deleteDeckMutate, isPending: isDeletingDeck, error: deleteDeckError } = useDeleteDeck();
-
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [deckToDelete, setDeckToDelete] = useState<DeckApiResponse | null>(null);
-  // const params = useParams(); // ★ Removed unused variable
-
-  // ★★★ Add state for edit modal ★★★
-  const [editingDeck, setEditingDeck] = useState<DeckApiResponse | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isMounted, setIsMounted] = useState(false); // For Portal
-  // ★★★★★★★★★★★★★★★★★★★★★★★
-
-  // ★ Add useEffect for Portal mount ★
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-  // ★★★★★★★★★★★★★★★★★★★★★★★
-
-  const handleDeleteClick = (deck: DeckApiResponse) => {
-    setDeckToDelete(deck);
-    setIsConfirmOpen(true);
-  };
-
-  const handleConfirmDelete = () => {
-    if (deckToDelete) {
-      deleteDeckMutate({ deckId: deckToDelete.id });
-      setIsConfirmOpen(false);
-      setDeckToDelete(null);
-    }
-  };
-
-  // ★★★ Add handleEditClick function ★★★
-  const handleEditClick = (deck: DeckApiResponse) => {
-    setEditingDeck(deck);
-    setIsEditModalOpen(true);
-  };
-  // ★★★★★★★★★★★★★★★★★★★★★★★
-
-  const Spinner = () => <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>;
-
-  const isLoading = authLoading || decksIsLoading;
-
-  if (isLoading && !pagination) {
-      return <div className="flex justify-center items-center h-screen"><Spinner /></div>;
-  }
-
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6">My Decks</h1>
-
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Create New Deck</h2>
-        <DeckCreateForm onSuccess={() => console.log('Deck created callback!')} />
-      </div>
-
-      <h2 className="text-2xl font-semibold mb-4">Existing Decks</h2>
-      {!decksIsLoading && decksError && (
-        <div className="text-red-600 bg-red-100 border border-red-400 p-4 rounded mb-4">
-          <p>Error loading decks:</p>
-          <pre>{decksError instanceof Error ? decksError.message : JSON.stringify(decksError)}</pre>
-        </div>
-      )}
-      {!isLoading && !decksError && decks && ( // Ensure decks is also checked
-         <>
-           {decks.length === 0 && offset === 0 && !decksIsFetching && ( // Check offset and fetching
-             <p>You haven&apos;t created any decks yet.</p> // ★★★ Fixed '
-           )}
-           {decks.length > 0 && (
-             <ul className="space-y-3 mb-6">
-               {decks.map((deck: DeckApiResponse) => ( // Added type for deck
-                 <li key={deck.id} className="p-4 border rounded-md shadow-sm bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700">
-                   <div className="flex justify-between items-center">
-                     <Link href={`/decks/${deck.id}`} className="text-lg font-medium hover:underline">
-                       {deck.name}
-                     </Link>
-                     <div className="space-x-2">
-                       <Link href={`/decks/${deck.id}`} className="text-blue-500 hover:underline text-sm">View</Link>
-                       <button
-                         // ★ Remove disabled, add onClick ★
-                         className="text-yellow-500 hover:underline text-sm disabled:opacity-50"
-                         onClick={() => handleEditClick(deck)}
-                         // disabled // ★ Removed ★
-                       >
-                         Edit
-                       </button>
-                       <button
-                         className="text-red-500 hover:underline text-sm disabled:opacity-50"
-                         onClick={() => handleDeleteClick(deck)}
-                         disabled={isDeletingDeck || decksIsFetching} // Disable while fetching too
-                       >
-                         {isDeletingDeck && deckToDelete?.id === deck.id ? 'Deleting...' : 'Delete'}
-                       </button>
-                     </div>
-                   </div>
-                   {deck.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{deck.description}</p>}
-                 </li>
-               ))}
-             </ul>
-           )}
-         </>
-       )}
-        {(decksIsLoading || decksIsFetching) && !decksError && ( // Loading/Fetching indicator
-            <div className="flex justify-center items-center mt-4">
-                <Spinner /> <span className="ml-2">Loading decks...</span>
-            </div>
-       )}
-
-       {/* Pagination Controls */}
-       {!isLoading && !decksError && pagination && pagination.totalItems > 0 && (
-         <div className="mt-6 flex items-center justify-center space-x-4">
-           <button
-             onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
-             disabled={!pagination._links.previous || decksIsFetching}
-             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-           >
-             Previous
-           </button>
-           <span className="text-sm text-gray-700 dark:text-gray-300">
-             {`Showing ${pagination.totalItems > 0 ? offset + 1 : 0} - ${Math.min(pagination.totalItems, offset + ITEMS_PER_PAGE)} of ${pagination.totalItems}`}
-           </span>
-           <button
-             onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
-             disabled={!pagination._links.next || decksIsFetching}
-             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-           >
-             Next
-           </button>
-         </div>
-       )}
-
-      {/* Delete Confirmation Dialog */}
-      {deckToDelete && (
-        <ConfirmationDialog
-          isOpen={isConfirmOpen}
-          onOpenChange={setIsConfirmOpen}
-          onConfirm={handleConfirmDelete}
-          title="Delete Deck"
-          // ★★★ Ensure no unescaped ' here ★★★
-          description={`Are you sure you want to delete "${deckToDelete.name}"? This action cannot be undone.`}
-          confirmText="Delete"
-          cancelText="Cancel"
-          isConfirming={isDeletingDeck} // Only disable confirm button during delete op
-        />
-      )}
-
-      {/* Delete Error Display */}
-      {deleteDeckError && (
-          <div className="text-red-600 mt-4">
-            Error deleting deck: {deleteDeckError.message}
-          </div>
-      )}
-      {/* ★★★ Add DeckEditModal rendering ★★★ */}
-      {isMounted && editingDeck && createPortal(
-        <DeckEditModal
-          isOpen={isEditModalOpen}
-          onOpenChange={setIsEditModalOpen} // Pass setter to allow modal to close itself
-          deck={editingDeck} // Pass the deck data to edit
-          onSuccess={() => {
-            setIsEditModalOpen(false); // Close modal on success
-            setEditingDeck(null);     // Clear editing state
-            console.log('Deck update successful, modal closed.');
-            // Optional: Add success toast/message here
-          }}
-        />,
-        document.body // Render directly into body
-      )}
-      {/* ★★★★★★★★★★★★★★★★★★★★★★★★★ */}
-    </div>
-  );
-}
-
-export default DecksPage;
-```
-
-## File: app/[locale]/(app)/test/page.tsx
-```typescript
-// src/app/[locale]/(app)/test/page.tsx
-'use client';
-
-import React, { useState } from 'react';
-import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-
-export default function DialogTestPage() {
-  const [isDialogOpen, setIsDialogOpen] = useState(true);
-
-  const handleConfirm = () => {
-    alert('Confirmed!');
-    setIsDialogOpen(false);
-  };
-
-  const handleOpenChange = (isOpen: boolean) => {
-    setIsDialogOpen(isOpen);
-  };
-
-  return (
-    <div style={{ padding: '20px' }}>
-      <h1>Confirmation Dialog Isolation Test</h1>
-      <p>
-        If the dialog below appears correctly centered on the screen,
-        the positioning issue is likely caused by interactions with other
-        components or styles in its original context (e.g., within CardList).
-      </p>
-      <p>
-        If the dialog below is still misplaced or cut off, the issue
-        might be with the dialog&apos;s internal styles, Tailwind setup, {/* ★★★ Fixed ' */}
-        or global CSS conflicts.
-      </p>
-
-      <ConfirmationDialog
-        isOpen={isDialogOpen}
-        onOpenChange={handleOpenChange}
-        onConfirm={handleConfirm}
-        title="Test Dialog: Is this centered?"
-        description="This dialog should appear fixed and centered within the browser viewport, regardless of this text."
-        confirmText="Confirm Test"
-        cancelText="Cancel Test"
-      />
-
-      <div style={{ height: '150vh', background: '#eee', marginTop: '20px' }}>
-        Scrollable area below the dialog trigger point (dialog should stay centered).
-      </div>
-    </div>
-  );
-}
-```
-
-## File: app/[locale]/layout.tsx
-```typescript
-// src/app/[locale]/layout.tsx (修正版 - ルートレイアウトが存在する場合)
-import type { ReactNode } from 'react';
-import { notFound } from 'next/navigation';
-import { NextIntlClientProvider } from 'next-intl';
-import { getMessages } from 'next-intl/server';
-
-
-    
-// ★ Providers はここではインポート・使用しない ★
-// import { Providers } from '@/components/providers';
-
-// ロケール検証関数
-const locales = ['en', 'ja'];
-function isValidLocale(locale: string): boolean {
-  return locales.includes(locale);
-}
-
-// (任意) メタデータ生成 (ルートレイアウトと別に定義する場合) ...
-
-export default async function LocaleLayout({
-  children,
-  params: paramsPromise // 引数名を変更 (任意だが推奨)
-}: {
-  children: ReactNode;
-  params: Promise<{ locale: string }>; // ★ 型を Promise に ★
-}) {
-  const { locale } = await paramsPromise; // ★ await で解決 ★
-
-  if (!isValidLocale(locale)) {
-    notFound();
-  }
-
-  let messages;
-  try {
-    messages = await getMessages({ locale });
-  } catch (error) {
-    console.error("Failed to load messages for locale:", locale, error);
-    notFound();
-  }
-  if (!messages) {
-     notFound();
-  }
-
-  // ★★★ <html> と <body> は削除し、Provider のみがトップレベル ★★★
-  return (
-    // NextIntlClientProvider はロケールごとに必要
-    <NextIntlClientProvider locale={locale} messages={messages}>
-      {/* Providers は既に上位の RootLayout で適用されているので不要 */}
-      {children}
-    </NextIntlClientProvider>
-  );
-}
-```
-
-## File: app/[locale]/page.tsx
-```typescript
-import {useTranslations} from 'next-intl';
-import {Link} from '@/i18n/navigation';
- 
-export default function HomePage() {
-  const t = useTranslations('HomePage');
-  return (
-    <div>
-      <h1>{t('title')}</h1>
-      <Link href="/about">{t('about')}</Link>
-    </div>
-  );
-}
-```
-
-## File: components/features/CardCreateForm.tsx
-```typescript
-"use client"; // Add this directive
-
-import React from 'react';
-import { useForm, Controller, SubmitHandler } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-// Removed Tamagui imports
-import { useCreateCard } from '@/hooks/useCardMutations';
-import { useTranslations } from 'next-intl'; // Use the correct client hook
-
-// Validation schema for the form
-const cardSchema = z.object({
-  front: z.string().min(1, 'Front text cannot be empty'),
-  back: z.string().min(1, 'Back text cannot be empty'),
-});
-
-type CardFormData = z.infer<typeof cardSchema>;
-
-interface CardCreateFormProps {
-  deckId: string;
-  onCardCreated?: () => void; // Optional callback after successful creation
-}
-
-export const CardCreateForm: React.FC<CardCreateFormProps> = ({ deckId, onCardCreated }) => {
-  const t = useTranslations('cardCreateForm'); // Use the correct hook
-  const {
-    control,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<CardFormData>({
-    resolver: zodResolver(cardSchema),
-    defaultValues: {
-      front: '',
-      back: '',
-    },
-  });
-
-  const { mutate: createCard, isPending, error } = useCreateCard(deckId, {
-    onSuccess: () => {
-      console.log('Card created, resetting form.');
-      reset(); // Reset form fields
-      onCardCreated?.(); // Call optional callback
-      // Optionally show a success toast/message
-    },
-    onError: (err) => {
-      console.error('Card creation failed:', err);
-      // Optionally show an error toast/message
-    },
-  });
-
-  const onSubmit: SubmitHandler<CardFormData> = (data) => {
-    console.log('Submitting new card:', data);
-    createCard(data);
-  };
-
-  return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Front Input */}
-      <div className="space-y-1"> {/* Replaced YStack */}
-        <label htmlFor="front" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          {t ? t('frontLabel') : 'Front'} <span className="text-red-500">*</span>
-        </label>
-        <Controller
-          name="front"
-          control={control}
-          render={({ field }) => (
-            <textarea
-              id="front"
-              placeholder={t ? t('frontPlaceholder') : 'Enter front text...'}
-              {...field}
-              rows={3}
-              className={`mt-1 block w-full px-3 py-2 border ${
-                errors.front ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-              } rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
-              aria-invalid={errors.front ? 'true' : 'false'}
-            />
-          )}
-        />
-        {errors.front && (
-          <p className="mt-1 text-sm text-red-600" role="alert"> {/* Replaced Paragraph */}
-            {errors.front.message}
-          </p>
-        )}
-      </div>
-
-      {/* Back Input */}
-      <div className="space-y-1"> {/* Replaced YStack */}
-        <label htmlFor="back" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          {t ? t('backLabel') : 'Back'} <span className="text-red-500">*</span>
-        </label>
-        <Controller
-          name="back"
-          control={control}
-          render={({ field }) => (
-            <textarea
-              id="back"
-              placeholder={t ? t('backPlaceholder') : 'Enter back text...'}
-              {...field}
-              rows={3}
-              className={`mt-1 block w-full px-3 py-2 border ${
-                errors.back ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-              } rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
-              aria-invalid={errors.back ? 'true' : 'false'}
-            />
-          )}
-        />
-        {errors.back && (
-          <p className="mt-1 text-sm text-red-600" role="alert"> {/* Replaced Paragraph */}
-            {errors.back.message}
-          </p>
-        )}
-      </div>
-
-      {/* API Error Message */}
-      {error && (
-        <div className="mt-2 p-2 border border-red-300 bg-red-50 dark:bg-red-900/30 rounded-md" role="alert">
-          <p className="text-sm text-red-700 dark:text-red-300"> {/* Replaced Paragraph */}
-            {t ? t('creationError', { message: error.message }) : `Error: ${error.message}`}
-          </p>
-        </div>
-      )}
-
-      {/* Submit Button */}
-      <div> {/* Wrapper div */}
-        <button
-          type="submit"
-          disabled={isPending}
-          className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {/* Replaced Spinner with text */}
-          {isPending ? (t ? t('creatingButton') : 'Creating...') : (t ? t('createButton') : 'Add Card')}
-        </button>
-      </div>
-    </form>
-  );
-};
-```
-
-## File: components/features/CardEditModal.tsx
-```typescript
-'use client';
-
-import React, { useState, useEffect, useRef } from 'react';
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { cardUpdateSchema, CardUpdatePayload } from '@/lib/zod';
-import { useUpdateCard, Card } from '@/hooks/useCardMutations'; // Use Card type from mutations (string dates)
-import { AppError, isAppError } from '@/lib/errors';
-
-interface CardEditModalProps {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
-  card: Card | null; // Expects Card with string dates
-  deckId: string;
-  onSuccess?: (updatedCard: Card) => void; // Callback on successful update
-}
-
-export const CardEditModal: React.FC<CardEditModalProps> = ({
-  isOpen,
-  onOpenChange,
-  card,
-  deckId,
-  onSuccess,
-}) => {
-  const [apiError, setApiError] = useState<AppError | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<CardUpdatePayload>({
-    resolver: zodResolver(cardUpdateSchema),
-    defaultValues: {
-      front: '',
-      back: '',
-    },
-  });
-
-  const updateCardMutation = useUpdateCard(deckId, {
-    onSuccess: (updatedCard) => { // Remove unused variables parameter
-      console.log('Card updated successfully:', updatedCard);
-      setApiError(null);
-      onSuccess?.(updatedCard); // Call the prop onSuccess
-      onOpenChange(false); // Close modal
-    },
-    onError: (error) => { // Remove unused _variables parameter
-      // Use error directly
-      console.error(`Error updating card:`, error);
-      setApiError(error);
-    },
-  });
-
-  // Effect to handle modal display state and reset form
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (isOpen) {
-      setApiError(null); // Clear previous API errors when opening
-      if (card) {
-        // Reset form with current card data when modal opens or card changes
-        reset({ front: card.front, back: card.back });
-      } else {
-        // Reset to empty if no card is provided (should ideally not happen if opened correctly)
-        reset({ front: '', back: '' });
-      }
-      if (!dialog.open) {
-        dialog.showModal();
-      }
-    } else {
-      if (dialog.open) {
-        dialog.close();
-        // Optionally reset form when closing, though reset on open might be sufficient
-        // reset({ front: '', back: '' });
-      }
-    }
-  }, [isOpen, card, reset]);
-
-  // Effect to handle closing via Escape key or backdrop click
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    const handleClose = () => {
-      onOpenChange(false);
-      setApiError(null); // Clear API error on close
-    };
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (event.target === dialog) {
-        handleClose();
-      }
-    };
-
-    dialog.addEventListener('close', handleClose);
-    dialog.addEventListener('click', handleClickOutside);
-
-    return () => {
-      dialog.removeEventListener('close', handleClose);
-      dialog.removeEventListener('click', handleClickOutside);
-    };
-  }, [onOpenChange]);
-
-
-  const onSubmit: SubmitHandler<CardUpdatePayload> = (data) => {
-    if (!card) {
-      console.error('Attempted to submit edit form without a card.');
-      setApiError(new AppError('No card selected for editing.', 400, 'VALIDATION_ERROR'));
-      return;
-    }
-    setApiError(null); // Clear previous API error before new submission
-    console.log('Submitting card update:', { cardId: card.id, data });
-    updateCardMutation.mutate({ cardId: card.id, data });
-  };
-
-  const handleCancel = () => {
-    onOpenChange(false);
-    setApiError(null); // Clear API error on cancel
-  };
-
-  const isPending = updateCardMutation.isPending || isSubmitting;
-
-  // Stringify details outside JSX to satisfy TypeScript
-  const detailsString = apiError && isAppError(apiError) && apiError.details
-    ? JSON.stringify(apiError.details, null, 2)
-    : null;
-
-  return (
-    <dialog
-      ref={dialogRef}
-      className="p-6 rounded-lg shadow-xl bg-white dark:bg-gray-800 w-full max-w-md backdrop:bg-black backdrop:opacity-50"
-    >
-      <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Edit Card</h2>
-      <form onSubmit={handleSubmit(onSubmit)} noValidate>
-        <div className="mb-4">
-          <label htmlFor="front" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Front
-          </label>
-          <textarea
-            id="front"
-            {...register('front')}
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-indigo-400 dark:focus:border-indigo-400"
-            aria-invalid={errors.front ? 'true' : 'false'}
-          />
-          {errors.front && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-              {errors.front.message}
-            </p>
-          )}
-        </div>
-
-        <div className="mb-6">
-          <label htmlFor="back" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Back
-          </label>
-          <textarea
-            id="back"
-            {...register('back')}
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-indigo-400 dark:focus:border-indigo-400"
-            aria-invalid={errors.back ? 'true' : 'false'}
-          />
-          {errors.back && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-              {errors.back.message}
-            </p>
-          )}
-        </div>
-
-        {/* Display API Error */}
-        {apiError && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
-            <p className="font-semibold">Error Updating Card</p>
-            <p>{apiError.message}</p>
-            {detailsString && (
-              <pre className="mt-2 text-xs overflow-auto">{detailsString}</pre>
-            )}
-          </div>
-        )}
-        {/* Display Zod refine error */}
-         {errors.root && ( // Check for root errors from refine
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-              {errors.root.message}
-            </p>
-          )}
-
-
-        <div className="flex justify-end space-x-3">
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 dark:bg-gray-600 dark:text-gray-100 dark:hover:bg-gray-500 dark:focus:ring-offset-gray-800"
-            disabled={isPending}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed dark:focus:ring-offset-gray-800"
-            disabled={isPending}
-          >
-            {isPending ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </form>
-    </dialog>
-  );
-};
-```
-
-## File: components/features/CardList.tsx
-```typescript
-// src/components/features/CardList.tsx (修正案 - JSX構造見直し・完全版)
-
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { useCards, Card } from '@/hooks/useCards';
-import { AiContentType } from '@prisma/client';
-import { useDeleteCard, Card as CardWithStringDates } from '@/hooks/useCardMutations';
-import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { CardEditModal } from './CardEditModal';
-
-interface CardListProps {
-  deckId: string;
-}
-
-export const CardList: React.FC<CardListProps> = ({ deckId }) => {
-  const ITEMS_PER_PAGE = 10;
-  const [offset, setOffset] = useState(0);
-
-  const { cards, pagination, isLoading, isFetching, error } = useCards(deckId, {
-    offset: offset,
-    limit: ITEMS_PER_PAGE,
-  });
-
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [cardToDelete, setCardToDelete] = useState<string | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
-  const [editingCard, setEditingCard] = useState<CardWithStringDates | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  const deleteCardMutation = useDeleteCard(deckId, {
-    onSuccess: (deletedCardId) => {
-      console.log(`Successfully deleted card ${deletedCardId}`);
-      setIsDeleteDialogOpen(false);
-      setCardToDelete(null);
-    },
-    onError: (error, deletedCardId) => {
-      console.error(`Failed to delete card ${deletedCardId}:`, error.message);
-      setIsDeleteDialogOpen(false);
-      setCardToDelete(null);
-      alert(`Error deleting card: ${error.message}`);
-    },
-  });
-
-  const handleDeleteClick = (cardId: string) => {
-    setCardToDelete(cardId);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const handleConfirmDelete = () => {
-    if (cardToDelete) {
-      deleteCardMutation.mutate({ cardId: cardToDelete });
-    }
-  };
-
-  const handleEditClick = (cardFromUseCards: Card) => {
-    if (!cardFromUseCards) return;
-    const cardForModal: CardWithStringDates = {
-        ...cardFromUseCards,
-        nextReviewAt: cardFromUseCards.nextReviewAt instanceof Date ? cardFromUseCards.nextReviewAt.toISOString() : String(cardFromUseCards.nextReviewAt ?? ''),
-        createdAt: cardFromUseCards.createdAt instanceof Date ? cardFromUseCards.createdAt.toISOString() : String(cardFromUseCards.createdAt ?? ''),
-        updatedAt: cardFromUseCards.updatedAt instanceof Date ? cardFromUseCards.updatedAt.toISOString() : String(cardFromUseCards.updatedAt ?? ''),
-        // aiContents are not included here for the modal for now
-    };
-    setEditingCard(cardForModal);
-    setIsEditModalOpen(true);
-  };
-
-  if (isLoading) {
-    return <div className="flex justify-center items-center py-10"><p>Loading cards...</p></div>;
-  }
-  if (error) {
-    return <div className="p-4 text-red-600 bg-red-100 border border-red-400 rounded"><p>Error loading cards: {error.message}</p></div>;
-  }
-  if (!cards || cards.length === 0) {
-    return <p className="text-gray-500 dark:text-gray-400">No cards found in this deck yet.</p>;
-  }
-
-  // --- Render Card List ---
-  // Use a div wrapper instead of React Fragment just in case
-  return (
-    <div>
-      {/* Card List */}
-      <ul className="space-y-4">
-        {cards.map((card) => (
-          <li key={card.id} className="p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 dark:border-gray-700 transition hover:shadow-md">
-            <div className="flex justify-between items-start gap-4">
-              {/* Card Content Area */}
-              <div className="flex-grow">
-                <div className="mb-2">
-                  <p className="font-semibold text-sm text-gray-500 dark:text-gray-400">Front</p>
-                  <p className="text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{card.front}</p>
-                </div>
-                <div className="mb-3">
-                  <p className="font-semibold text-sm text-gray-500 dark:text-gray-400">Back</p>
-                  <p className="text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{card.back}</p>
-                </div>
-                {/* AI Content Display Section */}
-                {card.aiContents && card.aiContents.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">AI Content:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {card.aiContents.map((content) => (
-                        <button
-                          key={content.id}
-                          className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
-                          title={`Type: ${content.contentType}, Lang: ${content.language}`}
-                        >
-                          {content.contentType === AiContentType.EXPLANATION ? 'Expl.' : 'Transl.'} ({content.language})
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* Action Buttons Area */}
-              <div className="flex flex-col space-y-2 flex-shrink-0">
-                <button
-                  onClick={() => handleEditClick(card)}
-                  className="px-2.5 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 rounded hover:bg-yellow-200 dark:bg-yellow-700 dark:text-yellow-100 dark:hover:bg-yellow-600"
-                  aria-label={`Edit card`}
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDeleteClick(card.id)}
-                  disabled={deleteCardMutation.isPending && cardToDelete === card.id}
-                  className="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-100 rounded hover:bg-red-200 dark:bg-red-700 dark:text-red-100 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label={`Delete card`}
-                >
-                  {deleteCardMutation.isPending && cardToDelete === card.id ? '...' : 'Delete'}
-                </button>
-              </div>
-            </div>
-            {/* Optional: SRS Info */}
-             <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-1">
-               Next: {new Date(card.nextReviewAt).toLocaleDateString()} (I:{card.interval}, EF:{card.easeFactor.toFixed(1)})
-             </div>
-          </li>
-        ))}
-      </ul>
-
-      {/* Pagination Controls */}
-      {isMounted && pagination && pagination.totalItems > ITEMS_PER_PAGE && (
-         <div className="mt-6 flex items-center justify-center space-x-4">
-            <button
-                onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
-                disabled={!pagination._links.previous || isFetching}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-                Previous
-            </button>
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-                {`Page ${Math.floor(offset / ITEMS_PER_PAGE) + 1} / ${Math.ceil(pagination.totalItems / ITEMS_PER_PAGE)} (${pagination.totalItems} items)`}
-            </span>
-            <button
-                onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
-                disabled={!pagination._links.next || isFetching}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-                Next
-            </button>
-        </div>
-      )}
-
-      {/* Modals */}
-      {isMounted && createPortal(
-        <ConfirmationDialog
-          isOpen={isDeleteDialogOpen}
-          onOpenChange={setIsDeleteDialogOpen}
-          onConfirm={handleConfirmDelete}
-          title="Delete Card"
-          description="Are you sure you want to delete this card? This action cannot be undone."
-          confirmText="Delete"
-          isConfirming={deleteCardMutation.isPending}
-        />,
-        document.body
-      )}
-      {isMounted && createPortal(
-        <CardEditModal
-          isOpen={isEditModalOpen}
-          onOpenChange={setIsEditModalOpen}
-          card={editingCard} // Ensure CardEditModal handles this type correctly
-          deckId={deckId}
-          onSuccess={() => {
-            setIsEditModalOpen(false);
-            setEditingCard(null);
-            console.log('Card update successful, modal closed.');
-          }}
-        />,
-        document.body
-      )}
-    </div>
-  );
-};
-
-// Re-export Card type alias (optional)
-export type { Card };
-```
-
-## File: components/features/DeckCreateForm.tsx
-```typescript
-'use client';
-
-import React from 'react';
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { deckCreateSchema, type DeckCreatePayload } from '@/lib/zod';
-import { useCreateDeck, ApiError } from '@/hooks/useDeckMutations'; // Import ApiError
-import { AuthError } from '@supabase/supabase-js'; // Import AuthError if needed for specific handling
-
-interface DeckCreateFormProps {
-  /** Optional callback function triggered on successful deck creation. */
-  onSuccess?: () => void;
-}
-
-export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({ onSuccess }) => {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-  } = useForm<DeckCreatePayload>({
-    resolver: zodResolver(deckCreateSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-    },
-  });
-
-  const { mutate, isPending, error } = useCreateDeck();
-
-  const onSubmit: SubmitHandler<DeckCreatePayload> = (data) => {
-    const payload = {
-      ...data,
-      description: data.description === '' ? null : data.description,
-    };
-    mutate(payload, {
-      onSuccess: () => {
-        reset();
-        onSuccess?.();
-      },
-      onError: (err) => {
-        console.error("Form submission error:", err);
-      }
-    });
-  };
-
-  let errorMessage: string | null = null;
-  if (error) {
-    if (error instanceof ApiError) {
-      errorMessage = `Error: ${error.message} (Status: ${error.status})`;
-      // Safely access the machine-readable code from the details property
-      if (typeof error.details === 'object' && error.details !== null && 'error' in error.details) {
-        // Now we know error.details is an object with an 'error' property
-        // We might still want to check the type of error.details.error if needed
-        const errorCode = (error.details as { error?: unknown }).error; // Cast to access
-        if (errorCode) { // Check if errorCode is truthy
-             errorMessage += ` [Code: ${errorCode}]`;
-        }
-      }
-    } else if (error instanceof AuthError) {
-        errorMessage = `Authentication Error: ${error.message}`;
-    } else {
-      errorMessage = 'An unexpected error occurred.';
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div>
-        <label htmlFor="deck-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Deck Name <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="deck-name"
-          type="text"
-          {...register('name')}
-          className={`mt-1 block w-full px-3 py-2 border ${
-            errors.name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-          } rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
-          aria-invalid={errors.name ? 'true' : 'false'}
-        />
-        {errors.name && (
-          <p className="mt-1 text-sm text-red-600" role="alert">
-            {errors.name.message}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label htmlFor="deck-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Description (Optional)
-        </label>
-        <textarea
-          id="deck-description"
-          {...register('description')}
-          rows={3}
-          className={`mt-1 block w-full px-3 py-2 border ${
-            errors.description ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-          } rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100`}
-          aria-invalid={errors.description ? 'true' : 'false'}
-        />
-        {errors.description && (
-          <p className="mt-1 text-sm text-red-600" role="alert">
-            {errors.description.message}
-          </p>
-        )}
-      </div>
-
-      {/* Display API Error Message */}
-      {errorMessage && (
-        <div className="mt-2 p-2 border border-red-300 bg-red-50 dark:bg-red-900/30 rounded-md" role="alert">
-          <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
-        </div>
-      )}
-
-      <div>
-        <button
-          type="submit"
-          disabled={isPending}
-          className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isPending ? '作成中...' : 'Create Deck'}
-        </button>
-      </div>
-    </form>
-  );
-};
-```
-
-## File: components/features/DeckCreateModal.tsx
-```typescript
-// src/components/features/DeckCreateModal.tsx
-import React from 'react';
-import { DeckCreateForm } from './DeckCreateForm';
-
-interface DeckCreateModalProps {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
-  onSuccess?: () => void;
-}
-
-export function DeckCreateModal({ isOpen, onOpenChange, onSuccess }: DeckCreateModalProps) {
-  const handleSuccess = () => {
-    onOpenChange(false);
-    if (onSuccess) {
-      onSuccess();
-    }
-  };
-
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onOpenChange(false);
-    }
-  };
-
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm" // Added background/blur to overlay div
-      aria-labelledby="deck-create-modal-title"
-      role="dialog"
-      aria-modal="true"
-      onClick={handleOverlayClick} // Close on overlay click
-    >
-      {/* Modal Content - Stop propagation */}
-      <div
-        className="relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-white dark:bg-gray-800 shadow-xl transform transition-all sm:my-8"
-        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
-       >
-        <div className="p-6 space-y-4">
-          <h2 id="deck-create-modal-title" className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100">
-            Create New Deck
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-             {/* ★★★ Fixed ' */}
-            Enter the name for your new deck. Click save when you&apos;re done.
-          </p>
-          <DeckCreateForm onSuccess={handleSuccess} />
-        </div>
-      </div>
-    </div>
-  );
-}
-```
-
-## File: components/features/DeckEditModal.tsx
-```typescript
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { deckUpdateSchema, DeckUpdatePayload } from 'src/lib/zod'; // Corrected path
-import { useUpdateDeck, ApiError } from 'src/hooks/useDeckMutations'; // Corrected path
-import type { DeckApiResponse } from 'src/types'; // Corrected path (assuming index.ts exports it)
-import type { AppError } from 'src/lib/errors'; // Corrected path
-import { AuthError } from '@supabase/supabase-js';
-
-interface DeckEditModalProps {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
-  deck: DeckApiResponse | null;
-  onSuccess?: () => void;
-}
-
-export const DeckEditModal: React.FC<DeckEditModalProps> = ({
-  isOpen,
-  onOpenChange,
-  deck,
-  onSuccess,
-}) => {
-  const [apiError, setApiError] = useState<string | null>(null);
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<DeckUpdatePayload>({
-    resolver: zodResolver(deckUpdateSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-    },
-  });
-
-  // Reset form when modal opens or the deck data changes
-  useEffect(() => {
-    if (isOpen && deck) {
-      reset({
-        name: deck.name,
-        description: deck.description ?? '', // Handle null description
-      });
-      setApiError(null); // Clear previous errors
-    }
-    // Optional: Clear form when modal closes (uncomment if needed)
-    // if (!isOpen) {
-    //   reset({ name: '', description: '' });
-    //   setApiError(null);
-    // }
-  }, [isOpen, deck, reset]);
-
-  const handleSuccess = (updatedDeck: DeckApiResponse) => {
-    console.log('Deck updated successfully:', updatedDeck);
-    setApiError(null);
-    onSuccess?.();
-    onOpenChange(false);
-  };
-
-  const handleError = (error: ApiError | AuthError | AppError) => { // Include AppError if needed
-    console.error('Error updating deck:', error);
-    // Check if error has a message property before accessing it
-    const message = 'message' in error ? error.message : 'An unexpected error occurred.';
-    setApiError(message);
-  };
-
-  // Setup mutation with callbacks
-  const { mutate: updateDeckMutate, isPending: updateIsPending, error: mutationError } = useUpdateDeck();
-
-  const onSubmit: SubmitHandler<DeckUpdatePayload> = (data) => {
-    if (!deck) {
-      setApiError('Error: No deck selected for editing.');
-      return;
-    }
-
-    // Convert empty string description back to null if necessary for API/DB
-    const dataToSubmit: DeckUpdatePayload = {
-      ...data,
-      description: data.description === '' ? null : data.description,
-    };
-
-    // Optional: Only submit if there are actual changes
-    const hasChanges = dataToSubmit.name !== deck.name || dataToSubmit.description !== deck.description;
-    if (!hasChanges) {
-        onOpenChange(false); // Close if no changes
-        return;
-    }
-
-
-    setApiError(null); // Clear previous errors before submitting
-    updateDeckMutate(
-        { deckId: deck.id, data: dataToSubmit },
-        { onSuccess: handleSuccess, onError: handleError } // Pass callbacks here
-    );
-  };
-
-  // Early return if modal is not open
-  if (!isOpen) {
-    return null;
-  }
-
-  // Determine if the submit button should be disabled
-  const isProcessing = isSubmitting || updateIsPending;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md relative">
-        {/* Close button */}
-        <button
-          onClick={() => onOpenChange(false)}
-          className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          aria-label="Close modal"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-
-        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Edit Deck</h2>
-
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <div className="mb-4">
-            <label htmlFor="deck-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Deck Name
-            </label>
-            <input
-              id="deck-name"
-              type="text"
-              {...register('name')}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                errors.name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-              }`}
-              aria-invalid={errors.name ? 'true' : 'false'}
-            />
-            {errors.name && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                {errors.name.message}
-              </p>
-            )}
-          </div>
-
-          <div className="mb-6">
-            <label htmlFor="deck-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Description (Optional)
-            </label>
-            <textarea
-              id="deck-description"
-              rows={3}
-              {...register('description')}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                errors.description ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
-              }`}
-              aria-invalid={errors.description ? 'true' : 'false'}
-            />
-            {errors.description && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-                {errors.description.message}
-              </p>
-            )}
-          </div>
-
-          {/* API Error Display */}
-          {apiError && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
-              <p className="text-sm">{apiError}</p>
-            </div>
-          )}
-          {/* Display mutation error if not handled by apiError state already */}
-          {mutationError && !apiError && (
-             <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md dark:bg-red-900 dark:border-red-700 dark:text-red-200" role="alert">
-               <p className="text-sm">{'message' in mutationError ? mutationError.message : 'An unexpected error occurred during submission.'}</p>
-             </div>
-           )}
-
-
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:bg-gray-600 dark:text-gray-200 dark:border-gray-500 dark:hover:bg-gray-500"
-              disabled={isProcessing}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
-                isProcessing
-                  ? 'bg-indigo-400 cursor-not-allowed dark:bg-indigo-700'
-                  : 'bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600'
-              }`}
-              disabled={isProcessing}
-            >
-              {isProcessing ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-```
-
-## File: components/providers/AuthProvider.tsx
-```typescript
-'use client'
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { Session, User } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase' // Client-side client
-
-// Define the shape of the context data
-interface AuthContextType {
-  session: Session | null
-  user: User | null
-  isLoading: boolean
-  // Auth functions (signUp, signIn, signOut) will be provided by useAuth hook
-}
-
-// Create the context with a default value
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
-
-// Create the provider component
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const supabase = createClient() // Initialize client-side client
-  const [session, setSession] = useState<Session | null>(null)
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true) // Start as true
-
-  useEffect(() => {
-    setIsLoading(true) // Set loading true when checking session initially
-
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setIsLoading(false) // Set loading false after initial check
-    }).catch((error) => {
-        console.error("Error getting initial session:", error);
-        setIsLoading(false); // Ensure loading is false even on error
-    })
-
-    // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        console.log("Auth state changed:", _event, session);
-        setSession(session)
-        setUser(session?.user ?? null)
-        // Don't set isLoading here, only on initial load
-      }
-    )
-
-    // Cleanup subscription on unmount
-    return () => {
-      authListener?.subscription.unsubscribe()
-    }
-  }, [supabase]) // Depend on supabase client instance
-
-  const value = {
-    session,
-    user,
-    isLoading,
-  }
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-// Custom hook to use the auth context
-export const useAuthContext = (): AuthContextType => {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuthContext must be used within an AuthProvider')
-  }
-  return context
-}
-```
-
-## File: components/ui/ConfirmationDialog.tsx
-```typescript
-"use client";
-
-import React from 'react';
-
-interface ConfirmationDialogProps {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
-  onConfirm: () => void;
-  title: string;
-  description: string;
-  confirmText?: string;
-  cancelText?: string;
-  isConfirming?: boolean; // Confirmation processing loading state
-}
-
-export function ConfirmationDialog({
-  isOpen,
-  onOpenChange,
-  onConfirm,
-  title,
-  description,
-  confirmText = 'Confirm', // Default value
-  cancelText = 'Cancel',   // Default value
-  isConfirming = false,
-}: ConfirmationDialogProps) {
-
-  // Handle closing the modal when clicking the overlay
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      onOpenChange(false);
-    }
-  };
-
-  if (!isOpen) {
-    return null; // Don't render anything if the modal is closed
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      aria-labelledby="confirmation-dialog-title"
-      role="dialog"
-      aria-modal="true"
-    >
-      {/* Overlay */}
-      <div
-        className="fixed inset-0 bg-black/50 transition-opacity"
-        aria-hidden="true"
-        onClick={handleOverlayClick} // Close on overlay click
-      ></div>
-
-      {/* Modal Content */}
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-white dark:bg-gray-800 shadow-xl transform transition-all sm:my-8">
-        <div className="p-6 space-y-4"> {/* Replaced YStack */}
-          <h2 id="confirmation-dialog-title" className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100"> {/* Replaced Dialog.Title */}
-            {title}
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400"> {/* Replaced Dialog.Description/Paragraph */}
-            {description}
-          </p>
-
-          {/* Action Buttons */}
-          <div className="flex justify-end space-x-3 pt-4"> {/* Replaced XStack */}
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-              aria-label={cancelText}
-            >
-              {cancelText}
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={isConfirming}
-              className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label={confirmText}
-            >
-              {isConfirming ? 'Processing...' : confirmText}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-```
-
-## File: components/providers.tsx
-```typescript
-'use client' // Mark this as a Client Component
-
-import React, { useState } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AuthProvider } from './providers/AuthProvider' // Import AuthProvider
-
-// Create a React Query client instance (only once per app load)
-function makeQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        // Default options for queries if needed
-        staleTime: 60 * 1000, // 1 minute
-      },
-    },
-  })
-}
-
-let browserQueryClient: QueryClient | undefined = undefined
-
-function getQueryClient() {
-  if (typeof window === 'undefined') {
-    // Server: always make a new query client
-    return makeQueryClient()
-  } else {
-    // Browser: make a new query client if we don't already have one
-    // This is very important, so we don't re-make a new client if React
-    // suspends during the initial render. This may not be needed if we
-    // have a suspense boundary BELOW the creation of the query client
-    if (!browserQueryClient) browserQueryClient = makeQueryClient()
-    return browserQueryClient
-  }
-}
-
-
-export function Providers({ children }: { children: React.ReactNode }) {
-  // Initialize queryClient using state to ensure it's stable across re-renders
-  // NOTE: useState ensures the client is created only once per component instance.
-  // Use getQueryClient to handle server/client differences.
-  const [queryClient] = useState(() => getQueryClient())
-
-  return (
-    // Wrap with AuthProvider
-    <AuthProvider>
-      <QueryClientProvider client={queryClient}>
-          {children}
-      </QueryClientProvider>
-    </AuthProvider>
-  )
-}
-```
-
-## File: hooks/useAuth.ts
-```typescript
-import { createClient } from '@/lib/supabase' // Client-side client
-import { AuthError, User, Session } from '@supabase/supabase-js' // Removed unused AuthResponse, AuthTokenResponsePassword
-import { useAuthContext } from '@/components/providers/AuthProvider' // Import the context hook
-
-// Define the types for the hook's return value
-interface AuthHookValue {
-    // Auth state from context
-    session: Session | null;
-    user: User | null;
-    isLoading: boolean;
-    // Auth functions
-    signUp: (email: string, password: string) => Promise<{ data: { user: User | null; session: Session | null; }; error: AuthError | null; }>;
-    signIn: (email: string, password: string) => Promise<{ data: { user: User | null; session: Session | null; }; error: AuthError | null; }>;
-    signOut: () => Promise<{ error: AuthError | null }>;
-}
-
-export const useAuth = (): AuthHookValue => {
-    // Get auth state from context
-    const { session, user, isLoading } = useAuthContext();
-    // Get the Supabase client instance for client components (needed for auth actions)
-    const supabase = createClient();
-
-    // Implement with desired signature (email, password separate)
-    const signUp = async (email: string, password: string) => {
-        // Call Supabase with the required object structure
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            // Optional: Add options like redirect URLs or metadata if needed
-            // options: {
-            //   emailRedirectTo: `${location.origin}/auth/callback`,
-            // }
-        });
-        // Basic error logging, could be enhanced
-        if (error) {
-            console.error('Sign up error:', error.message);
-        }
-        // Return type is inferred by TypeScript
-        return { data, error };
-    };
-
-    // Implement with desired signature (email, password separate)
-    const signIn = async (email: string, password: string) => {
-        // Call Supabase with the required object structure
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
-        if (error) {
-            console.error('Sign in error:', error.message);
-        }
-        // Return type is inferred by TypeScript
-        return { data, error };
-    };
-
-    const signOut = async (): Promise<{ error: AuthError | null }> => {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-            console.error('Sign out error:', error.message);
-        }
-        return { error };
-    };
-
-    // Return the auth state and functions
-    return { session, user, isLoading, signUp, signIn, signOut };
-};
-
-// Type guard to check for AuthError
-export function isAuthError(error: unknown): error is AuthError {
-    if (error && typeof error === 'object') {
-        return 'message' in error && 'status' in error;
-    }
-    return false;
-}
-```
-
-## File: hooks/useCardMutations.ts
-```typescript
-// src/hooks/useCardMutations.ts
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AppError, ERROR_CODES } from '@/lib/errors';
-// import { useLocale } from 'next-intl'; // Removed
-import { type CardUpdatePayload } from '@/lib/zod';
-
-// Define or import Card type
-export interface Card {
-  id: string;
-  front: string;
-  back: string;
-  deckId: string;
-  interval: number;
-  easeFactor: number;
-  nextReviewAt: string | Date; // Use string if API returns string, Date if objects are preferred
-  createdAt: string | Date;
-  updatedAt: string | Date;
-  frontAudioUrl?: string | null;
-  backAudioUrl?: string | null;
-  explanation?: string | null;
-  translation?: string | null;
-}
-
-type CreateCardData = {
-  front: string;
-  back: string;
-};
-
-type CreateCardContext = {
-  deckId: string;
-};
-
-// --- Create Card API Call ---
-const createCardApi = async (
-  { deckId }: CreateCardContext,
-  newData: CreateCardData
-): Promise<Card> => {
-  const apiUrl = `/api/decks/${deckId}/cards`; // locale-independent
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newData),
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new AppError(
-      errorData.message || 'Failed to create card',
-      response.status,
-      errorData.errorCode || ERROR_CODES.INTERNAL_SERVER_ERROR,
-      errorData.details
-    );
-  }
-  return response.json();
-};
-
-// --- useCreateCard Hook ---
-export const useCreateCard = (
-  deckId: string,
-  options?: {
-    onSuccess?: (data: Card) => void;
-    onError?: (error: AppError) => void;
-  }
-) => {
-  const queryClient = useQueryClient();
-  return useMutation<Card, AppError, CreateCardData>({
-    mutationFn: (newData) => createCardApi({ deckId }, newData),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
-      console.log('Card created successfully:', data);
-      options?.onSuccess?.(data);
-    },
-    onError: (error) => {
-      console.error('Error creating card:', error);
-      options?.onError?.(error);
-    },
-  });
-};
-
-// --- Delete Card API Call ---
-const deleteCardApi = async (
-  deckId: string,
-  cardId: string
-): Promise<void> => {
-  const apiUrl = `/api/decks/${deckId}/cards/${cardId}`; // locale-independent
-  const response = await fetch(apiUrl, { method: 'DELETE' });
-  if (!response.ok && response.status !== 204) {
-    let errorData = { message: 'Failed to delete card', errorCode: 'API_ERROR', details: null };
-    try {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        errorData = await response.json();
-      }
-      
-    } catch (_e) { // _e is unused
-      console.warn("Could not parse error response body for DELETE card request.");
-    }
-    throw new AppError(
-      errorData.message || 'Failed to delete card',
-      response.status,
-      (ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] || ERROR_CODES.INTERNAL_SERVER_ERROR),
-      errorData.details
-    );
-  }
-};
-
-// --- useDeleteCard Hook ---
-export const useDeleteCard = (
-  deckId: string,
-  options?: {
-    onSuccess?: (cardId: string) => void;
-    onError?: (error: AppError, cardId: string) => void;
-  }
-) => {
-  const queryClient = useQueryClient();
-  return useMutation<void, AppError, { cardId: string }>({
-    mutationFn: ({ cardId }) => deleteCardApi(deckId, cardId),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
-      console.log(`Card ${variables.cardId} deleted successfully from deck ${deckId}`);
-      options?.onSuccess?.(variables.cardId);
-    },
-    onError: (error, variables) => {
-      console.error(`Error deleting card ${variables.cardId}:`, error);
-      options?.onError?.(error, variables.cardId);
-    },
-  });
-};
-
-// --- Update Card API Call ---
-const updateCardApi = async (
-  deckId: string,
-  cardId: string,
-  updateData: CardUpdatePayload
-): Promise<Card> => {
-  const apiUrl = `/api/decks/${deckId}/cards/${cardId}`; // locale-independent
-  console.log(`[updateCardApi] Calling PUT ${apiUrl}`);
-  const response = await fetch(apiUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updateData),
-  });
-  if (!response.ok) {
-    let errorData = { message: `Failed to update card (Status: ${response.status})`, errorCode: 'API_ERROR', details: null };
-    try {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-           errorData = await response.json();
-      }
-    } catch (e) {
-      console.warn("[updateCardApi] Could not parse error response body:", e);
-    }
-    throw new AppError(
-      errorData.message,
-      response.status,
-      (ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] || ERROR_CODES.INTERNAL_SERVER_ERROR),
-      errorData.details
-    );
-  }
-  return response.json();
-};
-
-// --- useUpdateCard Hook ---
-export const useUpdateCard = (
-  deckId: string,
-  options?: {
-    onSuccess?: (updatedCard: Card, variables: { cardId: string; data: CardUpdatePayload }) => void;
-    onError?: (error: AppError, variables: { cardId: string; data: CardUpdatePayload }) => void;
-  }
-) => {
-  const queryClient = useQueryClient();
-  return useMutation<
-    Card,
-    AppError,
-    { cardId: string; data: CardUpdatePayload }
-  >({
-    mutationFn: ({ cardId, data }) => updateCardApi(deckId, cardId, data),
-    onSuccess: (updatedCard, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
-      console.log(`Card ${variables.cardId} updated successfully:`, updatedCard);
-      options?.onSuccess?.(updatedCard, variables);
-    },
-    onError: (error, variables) => {
-      console.error(`Error updating card ${variables.cardId}:`, error);
-      options?.onError?.(error, variables);
-    },
-  });
-};
-```
-
-## File: hooks/useCards.ts
-```typescript
-// src/hooks/useCards.ts (Updated for aiContents and explicit return type)
-
-import { useQuery } from '@tanstack/react-query';
-import { AppError, isAppError } from '@/lib/errors';
-// Import types needed for pagination and the card data structure (including aiContents)
-import {
-  type PaginatedCardsResponse, // Contains CardApiResponse[] with aiContents
-  type CardApiResponse,        // Card type including aiContents
-  type PaginationMeta          // Pagination metadata type
-} from '@/types/api.types';
-
-// Interface for potential error object structure from the API
-// Consider using ApiErrorResponse from api.types.ts if it matches the actual error structure
-interface ApiErrorLike {
-    message?: string;
-    errorCode?: string; // Assuming AppError might add this
-    details?: unknown;
-}
-
-// --- API function to fetch paginated cards ---
-// Logic remains largely the same, types are updated via imports
-const fetchPaginatedCards = async (deckId: string, offset: number, limit: number): Promise<PaginatedCardsResponse> => {
-    if (!deckId) {
-        // This check is important, although 'enabled' should prevent calls without deckId
-        throw new Error('Deck ID is required to fetch cards.');
-    }
-
-    // Construct URL with pagination query parameters
-    const params = new URLSearchParams({
-        offset: offset.toString(),
-        limit: limit.toString(),
-    });
-    const apiUrl = `/api/decks/${deckId}/cards?${params.toString()}`; // Use locale-independent path
-    console.log(`[useCards fetcher] Fetching cards from: ${apiUrl}`);
-
-    const response = await fetch(apiUrl);
-
-    if (!response.ok) {
-        // --- Error Handling (Existing logic) ---
-        let errorData: ApiErrorLike = { message: `Failed to fetch cards for deck ${deckId}. Status: ${response.status}` };
-        try {
-            const contentType = response.headers.get('content-type');
-            if (response.body && contentType && contentType.includes('application/json')) {
-                // Try to parse JSON error, potentially matching ApiErrorResponse or AppError structure
-                errorData = await response.json();
-            } else if (response.body) {
-                 const textResponse = await response.text();
-                 console.warn(`[useCards fetcher] Received non-JSON error response: ${textResponse.substring(0,100)}`);
-                 // Ensure errorData is an object before assigning message
-                 if (typeof errorData === 'object' && errorData !== null) {
-                    errorData.message = textResponse.substring(0,100); // Use part of the text as the message
-                 }
-            }
-        } catch (e) {
-            console.warn('[useCards fetcher] Could not parse error response body:', e);
-        }
-
-        // Throw specific AppError if possible, otherwise a generic Error
-        if (isAppError(errorData)) {
-           // If errorData matches AppError structure (checked by type guard)
-           throw new AppError(
-               errorData.message, // Guaranteed string by AppError
-               response.status,
-               errorData.errorCode, // Guaranteed ErrorCode by AppError
-               errorData.details
-           );
-        } else {
-           // Handle cases where errorData is not a structured AppError
-           const errorMessage = (typeof errorData === 'object' && errorData !== null && 'message' in errorData && typeof errorData.message === 'string')
-                                ? errorData.message // Use message if available
-                                : `Failed to fetch cards for deck ${deckId}. Status: ${response.status}`; // Fallback message
-           // Consider throwing AppError with a default code if appropriate
-           // throw new AppError(errorMessage, response.status, 'INTERNAL_SERVER_ERROR');
-           throw new Error(errorMessage); // Stick to generic Error for now
-        }
-        // --- End Error Handling ---
-    }
-
-    // Assume the API returns the PaginatedCardsResponse structure directly
-    const data: PaginatedCardsResponse = await response.json();
-    // Optional: Add validation here if needed (e.g., using Zod)
-    if (!data || !Array.isArray(data.data) || !data.pagination) {
-        console.error('[useCards fetcher] Invalid response format received:', data);
-        throw new Error('Invalid response format from cards API.');
-    }
-    return data;
-};
-
-
-// --- useCards Custom Hook ---
-
-// Define options for the hook
-interface UseCardsOptions {
-  offset?: number;
-  limit?: number;
-}
-
-// ↓↓↓ Define the explicit return type for the hook ↓↓↓
-interface UseCardsReturn {
-  /** Array of cards. Each card object conforms to CardApiResponse, including the `aiContents` array. */
-  cards: CardApiResponse[];
-  /** Pagination metadata, or null if no data. */
-  pagination: PaginationMeta | null;
-  /** True if the initial query is loading (no data yet). */
-  isLoading: boolean;
-  /** True if the query is fetching, including background fetching and refetching. */
-  isFetching: boolean;
-  /** Error object if the query failed, otherwise null. */
-  error: Error | AppError | null;
-}
-
-// Update hook signature to accept pagination options and return the defined type
-export const useCards = (deckId: string | null, options: UseCardsOptions = {}): UseCardsReturn => {
-    // Get pagination options with default values
-    const { offset = 0, limit = 10 } = options;
-
-    // Use React Query's useQuery hook
-    // Type arguments use the imported, updated types
-    const queryResult = useQuery<PaginatedCardsResponse, Error | AppError>({
-        // Update queryKey to include pagination parameters for unique caching per page
-        queryKey: ['cards', deckId, { offset, limit }],
-        // Update queryFn to call the paginated fetcher
-        queryFn: () => {
-            // Double-check deckId existence (though 'enabled' handles this)
-            if (!deckId) {
-                // Should not happen if 'enabled' is working, return rejected promise
-                // Use AppError for consistency if desired
-                return Promise.reject(new AppError("Deck ID is required.", 400, 'VALIDATION_ERROR'));
-            }
-            // Call the updated fetcher with deckId and pagination params
-            return fetchPaginatedCards(deckId, offset, limit);
-        },
-        // Ensure the query only runs when a valid deckId is provided
-        enabled: !!deckId,
-
-        // Optional: Keep previous data while fetching new page for smoother UX
-        // keepPreviousData: true,
-        // Optional: Define staleTime if needed
-        // staleTime: 5 * 60 * 1000, // 5 minutes
-    });
-
-    // Return the structured data conforming to UseCardsReturn
-    return {
-        // Access the nested 'data' array within the API response. Elements are CardApiResponse.
-        cards: queryResult.data?.data ?? [], // Default to empty array
-        // Access the 'pagination' object from the API response
-        pagination: queryResult.data?.pagination ?? null, // Default to null
-        // Pass through React Query status flags
-        isLoading: queryResult.isLoading,
-        isFetching: queryResult.isFetching,
-        error: queryResult.error, // Pass through any error object
-    };
-};
-
-// ↓↓↓ Re-export CardApiResponse as Card with updated JSDoc ↓↓↓
-/**
- * Re-exporting CardApiResponse as Card for component usage.
- * This Card type includes the `aiContents` array, reflecting the latest API structure.
- */
-export type { CardApiResponse as Card };
-```
-
-## File: hooks/useDeckMutations.ts
-```typescript
-// src/hooks/useDeckMutations.ts (API パス修正適用版)
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from './useAuth';
-import { AuthError } from '@supabase/supabase-js';
-// ★ 必要な型をインポート。パスが /types/api.types.ts に変更されているか確認 ★
-import { ApiErrorResponse, DeckApiResponse, DeckCreatePayload, DeckUpdatePayload } from '../types'; // DeckUpdatePayload をインポート
-
-// ★ ApiError クラスの定義 (重複定義を避けるため、lib/errors.ts など共通の場所に移動することも検討) ★
-// もし lib/errors.ts に同等のものがあればそちらをインポート
-export class ApiError extends Error {
-  status: number;
-  details?: unknown; // Changed from any
-
-  constructor(message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
-
-// --- Create Deck ---
-// ★ locale 引数を削除 ★
-const createDeckApi = async ({ deckData }: { deckData: DeckCreatePayload }): Promise<DeckApiResponse> => {
-  const apiUrl = `/api/decks`; // ★ locale なし ★
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(deckData),
-  });
-
-  if (!response.ok) {
-    const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response', error: 'PARSE_ERROR' })); // Ensure error property exists
-    throw new ApiError(errorData.message || `HTTP error! status: ${response.status}`, response.status, errorData.details);
-  }
-  return response.json();
-};
-
-export const useCreateDeck = () => {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const userId = user?.id;
-  // const params = useParams(); // ★ 不要なら削除 ★
-  // const locale = typeof params?.locale === 'string' ? params.locale : 'en'; // ★ 不要なら削除 ★
-
-  const mutation = useMutation<DeckApiResponse, ApiError | AuthError, DeckCreatePayload>({
-    // ★ locale 引数を削除 ★
-    mutationFn: (deckData: DeckCreatePayload) => createDeckApi({ deckData }),
-    onSuccess: (data) => {
-      // ★ queryKey から locale を削除 (データが locale に依存しない場合) ★
-      queryClient.invalidateQueries({ queryKey: ['decks', userId] });
-      console.log('Deck created successfully:', data);
-    },
-    onError: (error) => {
-      console.error('Error creating deck:', error);
-    },
-  });
-
-  return mutation;
-};
-
-
-// --- Delete Deck ---
-// ★ locale 引数を削除 ★
-const deleteDeckApi = async ({ deckId }: { deckId: string }): Promise<void> => {
-  const apiUrl = `/api/decks/${deckId}`; // ★ locale なし ★
-  const response = await fetch(apiUrl, {
-    method: 'DELETE',
-  });
-  if (response.status !== 204) {
-     const errorData: ApiErrorResponse = await response.json().catch(() => ({ message: 'Failed to parse error response', error: 'PARSE_ERROR' }));
-     throw new ApiError(errorData.message || `HTTP error! status: ${response.status}`, response.status, errorData.details);
-  }
-};
-
-
-export const useDeleteDeck = () => {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const userId = user?.id;
-  // const params = useParams(); // ★ 不要なら削除 ★
-  // const locale = typeof params?.locale === 'string' ? params.locale : 'en'; // ★ 不要なら削除 ★
-
-  const mutation = useMutation<void, ApiError | AuthError, { deckId: string }>({
-    // ★ locale 引数を削除 ★
-    mutationFn: ({ deckId }: { deckId: string }) => deleteDeckApi({ deckId }),
-    onSuccess: (_, variables) => {
-      // ★ queryKey から locale を削除 ★
-      queryClient.invalidateQueries({ queryKey: ['decks', userId] });
-      console.log(`Deck ${variables.deckId} deleted successfully`);
-    },
-    onError: (error, variables) => {
-      console.error(`Error deleting deck ${variables.deckId}:`, error);
-    },
-  });
-
-  return mutation;
-};
-
-// --- Update Deck (もし実装する場合も同様に locale を削除) ---
-
-// --- Update Deck API Call ---
-const updateDeckApi = async ({ deckId, data }: { deckId: string; data: DeckUpdatePayload }): Promise<DeckApiResponse> => {
-  const apiUrl = `/api/decks/${deckId}`; // locale なし
-  console.log(`[updateDeckApi] Calling PUT ${apiUrl}`);
-
-  const response = await fetch(apiUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      // 必要に応じて他のヘッダー (Authorization など)
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    // ★ エラー時は ApiError を throw する ★
-    const errorData = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
-    const message = typeof errorData.message === 'string' ? errorData.message : `HTTP error! status: ${response.status}`;
-    // 以前定義した ApiError クラスを使う
-    throw new ApiError(message, response.status, errorData.details);
-  }
-  return response.json(); // 更新後の DeckApiResponse を返す
-};
-
-
-/**
- * Custom hook for updating an existing deck.
- */
-export const useUpdateDeck = () => {
-  const queryClient = useQueryClient();
-  const { user } = useAuth(); // Get user ID for cache invalidation key
-  const userId = user?.id;
-
-  const mutation = useMutation<
-    DeckApiResponse,                      // onSuccess に渡されるデータ型 (更新後のデッキ)
-    ApiError | AuthError,                 // onError に渡されるエラー型
-    { deckId: string; data: DeckUpdatePayload } // mutate に渡す引数の型
-  >({
-    mutationFn: updateDeckApi, // 作成した API 呼び出し関数を指定
-    onSuccess: (updatedDeck, variables) => {
-      console.log(`Deck ${variables.deckId} updated successfully:`, updatedDeck);
-
-      // Invalidate queries to refetch data
-      // 1. デッキ一覧のキャッシュを無効化
-      queryClient.invalidateQueries({ queryKey: ['decks', userId] });
-
-      // 2. (推奨) 個別デッキのキャッシュも無効化 (もしあれば)
-      queryClient.invalidateQueries({ queryKey: ['deck', variables.deckId] });
-
-      // (任意) キャッシュを直接更新して即時反映させる場合
-      // queryClient.setQueryData(['deck', variables.deckId], updatedDeck);
-      // queryClient.setQueryData(['decks', userId], (oldData: DeckApiResponse[] | undefined) =>
-      //   oldData ? oldData.map(deck => deck.id === variables.deckId ? updatedDeck : deck) : []
-      // );
-    },
-    onError: (error, variables) => {
-      console.error(`Error updating deck ${variables.deckId}:`, error);
-      // UI側で error.message などを表示することを想定
-    },
-  });
-
-  return mutation;
-};
-```
-
-## File: hooks/useDecks.ts
-```typescript
-// src/hooks/useDecks.ts
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from './useAuth';
-// Assuming types are exported correctly from api.types
-import { DeckApiResponse, ApiErrorResponse, PaginatedDecksResponse, PaginationMeta } from '../types/api.types';
-
-interface UseDecksOptions {
-  offset?: number;
-  limit?: number;
-}
-
-interface UseDecksReturn {
-  decks: DeckApiResponse[];
-  pagination: PaginationMeta | null;
-  isLoading: boolean;
-  isFetching: boolean;
-  error: Error | null; // Keep error type as Error for simplicity from useQuery
-}
-
-const fetchPaginatedDecks = async (userId: string, offset: number, limit: number): Promise<PaginatedDecksResponse> => {
-  const params = new URLSearchParams({
-    offset: offset.toString(),
-    limit: limit.toString(),
-  });
-  const apiUrl = `/api/decks?${params.toString()}`;
-  console.log(`[useDecks fetcher] Fetching decks from: ${apiUrl}`);
-
-  const response = await fetch(apiUrl);
-
-  if (!response.ok) {
-    // ★★★ Fixed let -> const ★★★
-    const errorData: { message?: string } = { message: `Failed to fetch decks. Status: ${response.status}` };
-    try {
-      if (response.headers.get('content-length') !== '0' && response.body) {
-        const parsedError: ApiErrorResponse | { message: string } = await response.json();
-        // Only assign if parsedError has a message property
-        if (parsedError && typeof parsedError.message === 'string') {
-             errorData.message = parsedError.message;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not parse error response body for fetchPaginatedDecks:', e);
-    }
-    throw new Error(errorData.message);
-  }
-  return response.json() as Promise<PaginatedDecksResponse>;
-};
-
-
-export const useDecks = (options: UseDecksOptions = {}): UseDecksReturn => {
-  const { offset = 0, limit = 10 } = options;
-  const { user, isLoading: isAuthLoading } = useAuth();
-  const userId = user?.id;
-
-  // Specify Error type for useQuery to match the catch block
-  const queryResult = useQuery<PaginatedDecksResponse, Error>({
-    queryKey: ['decks', userId, { offset, limit }],
-    queryFn: () => {
-      if (!userId) return Promise.reject(new Error("User not authenticated"));
-      return fetchPaginatedDecks(userId, offset, limit);
-    },
-    enabled: !!userId && !isAuthLoading,
-  });
-
-  return {
-    decks: queryResult.data?.data ?? [],
-    pagination: queryResult.data?.pagination ?? null,
-    isLoading: queryResult.isLoading || isAuthLoading,
-    isFetching: queryResult.isFetching,
-    error: queryResult.error, // This will be of type Error | null
-  };
-};
-```
-
-## File: i18n/navigation.ts
-```typescript
-import {createNavigation} from 'next-intl/navigation';
-import {routing} from './routing';
- 
-// Lightweight wrappers around Next.js' navigation
-// APIs that consider the routing configuration
-export const {Link, redirect, usePathname, useRouter, getPathname} =
-  createNavigation(routing);
-```
-
-## File: i18n/request.ts
-```typescript
-import {getRequestConfig} from 'next-intl/server';
-import {hasLocale} from 'next-intl';
-import {routing} from './routing';
- 
-export default getRequestConfig(async ({requestLocale}) => {
-  // Typically corresponds to the `[locale]` segment
-  const requested = await requestLocale;
-  const locale = hasLocale(routing.locales, requested)
-    ? requested
-    : routing.defaultLocale;
- 
-  return {
-    locale,
-    messages: (await import(`../../messages/${locale}.json`)).default
-  };
-});
-```
-
-## File: i18n/routing.ts
-```typescript
-import {defineRouting} from 'next-intl/routing';
- 
-export const routing = defineRouting({
-  // A list of all locales that are supported
-  locales: ['en', 'ja'],
- 
-  // Used when no locale matches
-  defaultLocale: 'en'
-});
-```
-
-## File: lib/auth.ts
-```typescript
-import { cookies } from 'next/headers'
-import { createSupabaseServerComponentClient } from '@/lib/supabase' // Use the server-side client creator
-import { User } from '@supabase/supabase-js'
-import { AuthError } from '@supabase/supabase-js' // Import AuthError type
-
-// Define a more specific error type if needed, or use AuthError directly
-// Define a simpler error type for the catch block
-type ServerAuthCatchError = { name: string; message: string; status: number };
-
-interface ServerUserResult {
-    user: User | null;
-    error: AuthError | ServerAuthCatchError | null; // Allow AuthError or our custom catch error
-}
-
-/**
- * Retrieves the authenticated user on the server-side (Server Components, API Routes, Server Actions).
- * Uses cookies from the incoming request to get the session.
- *
- * @returns {Promise<ServerUserResult>} An object containing the user or an error.
- */
-export const getServerUser = async (): Promise<ServerUserResult> => {
-  try {
-    // 1. Get cookie store
-    const resolvedCookieStore = await cookies() // Await the promise
-
-    // 2. Create Supabase client for server actions/components
-    const supabase = createSupabaseServerComponentClient(resolvedCookieStore);
-    // 3. Get user session
-    const { data: { user }, error } = await supabase.auth.getUser()
-
-    if (error) {
-      console.error("Error getting server user:", error.message)
-      return { user: null, error }
-    }
-
-    return { user, error: null }
-
-  } catch (err: unknown) {
-    // Catch potential errors during client creation or cookie access
-    console.error("Unexpected error in getServerUser:", err)
-    // Determine the error message safely
-    let errorMessage = 'An unexpected error occurred retrieving server user.';
-    if (typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string') {
-        errorMessage = err.message;
-    } else if (err instanceof Error) {
-        errorMessage = err.message;
-    }
-    // Return a simpler error object
-    const error: ServerAuthCatchError = {
-        name: 'ServerAuthCatchError',
-        message: errorMessage,
-        status: 500, // Internal Server Error
-    };
-    return { user: null, error };
-  }
-}
-
-// Optional: Helper to get just the user ID
-export const getServerUserId = async (): Promise<string | null> => {
-    const { user, error } = await getServerUser();
-    if (error || !user) {
-        return null;
-    }
-    return user.id;
-}
-```
-
-## File: lib/db.ts
-```typescript
-import { PrismaClient } from '.prisma/client'
-
-// Declare a global variable to hold the Prisma client instance
-declare global {
-  // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined
-}
-
-// Instantiate PrismaClient, reusing the instance in development
-// or creating a new one in production
-const prisma = global.prisma || new PrismaClient({
-  // Optional: Log Prisma queries
-  // log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
-})
-
-// In development, assign the instance to the global variable
-if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma
-}
-
-export default prisma
-```
-
-## File: lib/errors.ts
-```typescript
-// 標準エラーコードの例 (プロジェクトに合わせて定義)
-export const ERROR_CODES = {
-    VALIDATION_ERROR: 'VALIDATION_ERROR',
-    AUTHENTICATION_FAILED: 'AUTHENTICATION_FAILED',
-    PERMISSION_DENIED: 'PERMISSION_DENIED',
-    RESOURCE_NOT_FOUND: 'RESOURCE_NOT_FOUND',
-    RESOURCE_CONFLICT: 'RESOURCE_CONFLICT', // ★ 既存リソースとの衝突 (例: Unique制約)
-    EXTERNAL_API_FAILURE: 'EXTERNAL_API_FAILURE',
-    DATABASE_ERROR: 'DATABASE_ERROR',       // ★ データベース関連エラー
-    INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
-  } as const; // Readonlyにする
-  
-  type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
-  
-  // アプリケーション共通のベースエラークラス
-  export class AppError extends Error {
-    public readonly statusCode: number;
-    public readonly errorCode: ErrorCode;
-    public readonly details?: unknown;
-
-    constructor(message: string, statusCode: number, errorCode: ErrorCode, details?: unknown) {
-      super(message);
-      this.statusCode = statusCode;
-      this.errorCode = errorCode;
-      this.details = details;
-      this.name = this.constructor.name; // エラークラス名を設定
-      Object.setPrototypeOf(this, new.target.prototype);
-      // Error.captureStackTrace(this, this.constructor); // Node.js 環境なら有効
-    }
-  }
-  
-  // --- 具体的なエラークラス ---
-  
-  export class ValidationError extends AppError {
-    constructor(message: string = 'Invalid input data.', details?: unknown) {
-      super(message, 400, ERROR_CODES.VALIDATION_ERROR, details);
-    }
-  }
-  
-  export class AuthenticationError extends AppError {
-    constructor(message: string = 'Authentication failed.') {
-      super(message, 401, ERROR_CODES.AUTHENTICATION_FAILED);
-    }
-  }
-  
-  export class PermissionError extends AppError {
-    constructor(message: string = 'Permission denied.') {
-      super(message, 403, ERROR_CODES.PERMISSION_DENIED);
-    }
-  }
-  
-  export class NotFoundError extends AppError {
-    constructor(message: string = 'Resource not found.') {
-      super(message, 404, ERROR_CODES.RESOURCE_NOT_FOUND);
-    }
-  }
-  
-  // ★ デッキ作成時のユニーク制約違反などに使用 ★
-  export class ConflictError extends AppError {
-    constructor(message: string = 'Resource conflict.') {
-      super(message, 409, ERROR_CODES.RESOURCE_CONFLICT);
-    }
-  }
-  
-  export class ExternalApiError extends AppError {
-     /**
-       * Constructs an ExternalApiError.
-       * @param message - A human-readable description of the error. Defaults to 'External API request failed.'.
-       * @param originalError - Optional: The original error object caught, to be stored in details for logging.
-       */
-     constructor(message: string = 'External API request failed.', originalError?: Error) {
-     // super の第4引数に originalError を渡して details に格納する
-     super(message, 503, ERROR_CODES.EXTERNAL_API_FAILURE, originalError);
-     }
-    }
-    
-
-  
-  // ★ 予期せぬデータベースエラーなどに使用 ★
-  export class DatabaseError extends AppError {
-      constructor(message: string = 'Database operation failed.', originalError?: Error) {
-          // DBエラーの詳細はログには出すが、クライアントには返さない想定
-          super(message, 500, ERROR_CODES.DATABASE_ERROR, originalError);
-      }
-  }
-  
-  // 予期せぬサーバー内部エラー
-  export class InternalServerError extends AppError {
-      constructor(message: string = 'An unexpected internal server error occurred.', originalError?: Error) {
-          super(message, 500, ERROR_CODES.INTERNAL_SERVER_ERROR, originalError);
-      }
-  }
-  
-  // Type guard to check if an error is an AppError
-  export const isAppError = (error: unknown): error is AppError => {
-      return error instanceof AppError;
-  }
-import { NextResponse } from 'next/server';
-// Note: Assuming AppError, ERROR_CODES, InternalServerError, isAppError are defined above in the same file.
-// If Prisma errors need specific handling, import Prisma from '@prisma/client'
-
-/**
- * Centralized API error handler for Next.js API routes.
- * Logs the error and returns a standardized JSON response.
- * @param error - The error caught in the try-catch block.
- * @returns A NextResponse object with the appropriate status code and error details.
- */
-export const handleApiError = (error: unknown): NextResponse => {
-  console.error('API Error:', error); // Log the error for server-side debugging
-
-  if (isAppError(error)) {
-    // Handle known application errors
-    return NextResponse.json(
-      {
-        message: error.message,
-        errorCode: error.errorCode,
-        details: error.details,
-      },
-      { status: error.statusCode }
-    );
-  }
-
-  // Example: Handle Prisma specific errors (Uncomment and adjust if needed)
-  // import { Prisma } from '@prisma/client';
-  // import { ConflictError, DatabaseError } from './errors'; // Assuming these are defined
-  // if (error instanceof Prisma.PrismaClientKnownRequestError) {
-  //   if (error.code === 'P2002') { // Unique constraint violation
-  //     const conflictError = new ConflictError('Resource already exists.');
-  //     return NextResponse.json(
-  //       { message: conflictError.message, errorCode: conflictError.errorCode },
-  //       { status: conflictError.statusCode }
-  //     );
-  //   }
-  //   // Handle other known Prisma errors
-  //   const dbError = new DatabaseError('Database request failed.', error);
-  //   return NextResponse.json(
-  //     { message: dbError.message, errorCode: dbError.errorCode },
-  //     { status: dbError.statusCode }
-  //   );
-  // }
-
-  // Handle unexpected errors
-  // Ensure InternalServerError is defined above or imported
-  const internalError = new InternalServerError('An unexpected error occurred.', error instanceof Error ? error : undefined);
-  return NextResponse.json(
-    {
-      message: internalError.message,
-      errorCode: internalError.errorCode,
-    },
-    { status: internalError.statusCode }
-  );
-};
-```
-
-## File: lib/supabase.ts
-```typescript
-// src/lib/supabase.ts (最終修正版)
-import { createBrowserClient, createServerClient, type CookieOptions } from '@supabase/ssr'
-import { type ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'
-import { type NextRequest, type NextResponse } from 'next/server'
-
-// Ensure environment variables are defined
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!supabaseUrl) {
-  throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_URL")
-}
-if (!supabaseAnonKey) {
-  throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY")
-}
-// if (!supabaseServiceRoleKey) { console.warn(...) }
-
-
-// --- Client Components Client ---
-export const createClient = () =>
-  createBrowserClient(
-    supabaseUrl!,
-    supabaseAnonKey!
-  )
-
-// --- Server Component Client (Read-Only Cookies) ---
-export const createSupabaseServerComponentClient = (cookieStore: ReadonlyRequestCookies) => {
-  return createServerClient(
-    supabaseUrl!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
-}
-
-// --- Server Action / Route Handler Client (Read/Write Cookies) ---
-export const createSupabaseServerActionClient = (cookieStoreAccessor: () => ReadonlyRequestCookies) => {
-      const cookieStore = cookieStoreAccessor();
-      return createServerClient(
-        supabaseUrl!,
-        supabaseAnonKey!,
-        {
-          cookies: {
-            get(name: string) {
-              return cookieStore.get(name)?.value
-            },
-            set(name: string, value: string, options: CookieOptions) {
-              try {
-                cookieStoreAccessor().set(name, value, options)
-              } catch (error) {
-                console.error(`ServerActionClient: Failed to set cookie '${name}'.`, error);
-              }
-            },
-            remove(name: string, options: CookieOptions) {
-              try {
-                cookieStoreAccessor().set({ name, value: '', ...options, maxAge: 0 });
-              } catch (error) {
-                console.error(`ServerActionClient: Failed to remove cookie '${name}'.`, error);
-              }
-            },
-          },
-        }
-      )
-    }
-
-// --- Middleware Client ---
-export const createMiddlewareClient = (req: NextRequest, res: NextResponse) => {
-    return createServerClient(
-        supabaseUrl!,
-        supabaseAnonKey!,
-        {
-            cookies: {
-                get(name: string) {
-                    return req.cookies.get(name)?.value
-                },
-                set(name: string, value: string, options: CookieOptions) {
-                    req.cookies.set({ name, value, ...options })
-                    res.cookies.set({ name, value, ...options })
-                },
-                remove(name: string, options: CookieOptions) {
-                    req.cookies.delete(name)
-                    res.cookies.set({ name, value: '', ...options, maxAge: 0 })
-                },
-            },
-        }
-    )
-}
-
-// --- Server-Side Admin Client (Optional) ---
-export const createAdminClient = () => {
-    if (!supabaseServiceRoleKey) {
-        throw new Error("Missing env.SUPABASE_SERVICE_ROLE_KEY for admin client.")
-    }
-    return createServerClient(
-        supabaseUrl!,
-        supabaseServiceRoleKey!,
-        {
-            auth: {
-                persistSession: false,
-                autoRefreshToken: false,
-                detectSessionInUrl: false,
-            },
-            cookies: {
-                get(_name: string) { return undefined; },
-                set(_name: string, _value: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
-                remove(_name: string, _options: CookieOptions) {}, // Removed unused eslint-disable comment
-            }
-        }
-    )
-}
-```
-
-## File: lib/zod.ts
-```typescript
-import { z } from 'zod';
-
-// --- デッキ作成用スキーマと型 ---
-export const deckCreateSchema = z.object({
-  name: z.string()
-    .min(1, { message: 'Deck name is required.' }) // 日本語メッセージはi18n対応を後で検討
-    .max(100, { message: 'Deck name must be 100 characters or less.' }),
-  description: z.string()
-    .max(500, { message: 'Description must be 500 characters or less.' })
-    .optional() // 任意入力
-    .nullable(), // null も許容 (フォーム未入力時に null になる場合を考慮)
-});
-
-// スキーマから TypeScript 型を生成してエクスポート
-export type DeckCreatePayload = z.infer<typeof deckCreateSchema>;
-
-// --- 他のスキーマ (例: 学習結果更新用) ---
-export const reviewResultSchema = z.object({
-  cardId: z.string().cuid(), // cuid形式を期待する場合
-  rating: z.enum(['AGAIN', 'HARD', 'GOOD', 'EASY']), // Enumの値と一致
-});
-
-export type ReviewResultPayload = z.infer<typeof reviewResultSchema>;
-
-// --- パスワード変更用スキーマ (例) ---
-export const changePasswordSchema = z.object({
-    currentPassword: z.string().min(6),
-    newPassword: z.string().min(6), // 必要ならより複雑なルールを追加
-});
-export type ChangePasswordPayload = z.infer<typeof changePasswordSchema>;
-
-// --- 他に必要な Zod スキーマをここに追加 ---
-// --- カード作成用スキーマ ---
-export const cardCreateSchema = z.object({
-  front: z.string().min(1, { message: 'Front content is required.' }).max(1000, { message: 'Front content must be 1000 characters or less.' }),
-  back: z.string().min(1, { message: 'Back content is required.' }).max(1000, { message: 'Back content must be 1000 characters or less.' }),
-  // deckId は API ルートハンドラでパスパラメータから取得するため、ここには含めない
-});
-export type CardCreatePayload = z.infer<typeof cardCreateSchema>;
-
-
-// --- カード更新用スキーマ ---
-export const cardUpdateSchema = z.object({
-  front: z.string()
-    .min(1, { message: 'Front content cannot be empty if provided.' }) // 空文字での更新を防ぐ場合
-    .max(1000, { message: 'Front content must be 1000 characters or less.' })
-    .optional(), // 任意入力
-  back: z.string()
-    .min(1, { message: 'Back content cannot be empty if provided.' }) // 空文字での更新を防ぐ場合
-    .max(1000, { message: 'Back content must be 1000 characters or less.' })
-    .optional(), // 任意入力
-}).refine(data => data.front !== undefined || data.back !== undefined, {
-  message: "At least one field (front or back) must be provided for update.",
-  path: ["front", "back"], // エラーメッセージを関連付けるフィールド
-}); // front か back のどちらかは必須とする
-
-// スキーマから TypeScript 型を生成してエクスポート
-export type CardUpdatePayload = z.infer<typeof cardUpdateSchema>;
-// --- デッキ更新用スキーマ ---
-export const deckUpdateSchema = z.object({
-  name: z.string()
-    .min(1, { message: 'Deck name cannot be empty if provided.' })
-    .max(100, { message: 'Deck name must be 100 characters or less.' })
-    .optional(),
-  description: z.string()
-    .max(500, { message: 'Description must be 500 characters or less.' })
-    .nullable() // Allow null for clearing description
-    .optional(),
-}).refine(data => data.name !== undefined || data.description !== undefined, {
-  message: "At least one field (name or description) must be provided for update.",
-  // Zod 3.23+ では refine の第二引数で path を指定可能
-  // path: ["name", "description"], // 関連フィールドを指定
-});
-
-// スキーマから TypeScript 型を生成してエクスポート
-export type DeckUpdatePayload = z.infer<typeof deckUpdateSchema>;
-```
-
-## File: services/ai.service.ts
-```typescript
-// src/services/ai.service.ts (デバッグログ追加後の完全版)
-
-import { TextToSpeechClient } from "@google-cloud/text-to-speech";
-import { VertexAI, GenerateContentRequest } from "@google-cloud/vertexai"; // Import necessary types
-import { Storage } from "@google-cloud/storage";
-import {
-  AppError,
-  ExternalApiError,
-  isAppError, // isAppError をインポート (generateExplanation, generateTranslation で使用)
-  ERROR_CODES,
-} from "@/lib/errors";
-
-// クライアント初期化
-let ttsClient: TextToSpeechClient | null = null;
-let storage: Storage | null = null;
-let vertexAI: VertexAI | null = null;
-let bucketName: string = "";
-let vertexAiModelName: string = "";
-let vertexAiRegion: string = ""; // Add variable for region
-let ttsVoiceName: string = ""; // Add variable for TTS voice
-
-try {
-  // --- ↓↓↓ デバッグログ追加 ↓↓↓ ---
-  const projectId = process.env.GCP_PROJECT_ID || '';
-  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || 'Not Set';
-  // --- ↑↑↑ デバッグログ追加ここまで ↑↑↑
-
-  // --- Make Region Configurable ---
-  const defaultRegion = 'asia-northeast1'; // Changed default region
-  vertexAiRegion = process.env.VERTEX_AI_REGION || defaultRegion;
-  console.log("--- AI Service Initialization ---");
-  console.log(`Attempting to initialize Google Cloud clients.`);
-  console.log(`Using GCP_PROJECT_ID: "${projectId}"`);
-  console.log(`Using GOOGLE_APPLICATION_CREDENTIALS: "${credentialsPath}"`);
-  // --- Update Log for Region ---
-  console.log(`Using Vertex AI Region: "${vertexAiRegion}" ${!process.env.VERTEX_AI_REGION ? '(Default)' : '(From Env Var)'}`);
-  if (!projectId || credentialsPath === 'Not Set') {
-       console.error("!!! CRITICAL: GCP_PROJECT_ID or GOOGLE_APPLICATION_CREDENTIALS seems missing or empty in .env.local !!!");
-  }
-
-  // TextToSpeechClient と Storage の初期化 (変更なし)
-  ttsClient = new TextToSpeechClient();
-  storage = new Storage();
-
-  // VertexAI クライアントの初期化 (Use configured region)
-  vertexAI = new VertexAI({
-    project: projectId,
-    location: vertexAiRegion, // Use configured region
-  });
-
-  // GCS バケット名の取得 (変更なし)
-  bucketName = process.env.GCS_BUCKET_NAME || "";
-  if (!process.env.GCP_PROJECT_ID) console.warn("GCP_PROJECT_ID missing.");
-  if (!bucketName && storage) console.warn("GCS_BUCKET_NAME missing.");
-
-  // Determine Vertex AI model name
-  const fallbackModel = "gemini-1.5-flash-002"; // Changed fallback model to latest alias
-  vertexAiModelName = process.env.VERTEX_AI_MODEL_NAME || fallbackModel;
-  console.log(`Using Vertex AI Model: "${vertexAiModelName}" ${!process.env.VERTEX_AI_MODEL_NAME ? '(Fallback)' : '(From Env Var)'}`);
-
-  // --- Make TTS Voice Configurable ---
-  const defaultTtsVoice = "ja-JP-Wavenet-B";
-  ttsVoiceName = process.env.TTS_VOICE_NAME || defaultTtsVoice;
-  console.log(`Using TTS Voice: "${ttsVoiceName}" ${!process.env.TTS_VOICE_NAME ? '(Default)' : '(From Env Var)'}`);
-
-
-} catch (error) {
-  console.error("Failed to initialize Google Cloud clients.", error);
-  // 初期化失敗時はクライアントを null に設定 (変更なし)
-  ttsClient = null;
-  storage = null;
-  vertexAI = null;
-}
-
-/**
- * Generates TTS audio from text, saves it to GCS, and returns a Signed URL.
- * (Uses configured TTS voice)
- */
-export const generateTtsAudio = async (
-  text: string,
-  gcsFilename: string,
-): Promise<string | null> => {
-  if (!ttsClient || !storage || !bucketName) {
-    console.error(
-      "generateTtsAudio: TTS client, Storage client, or Bucket Name is not initialized.",
-    );
-    return null;
-  }
-  if (!text || !gcsFilename) {
-    console.error("generateTtsAudio: Missing text or filename.");
-    return null;
-  }
-  console.log(`[AI Service] Generating TTS for filename: ${gcsFilename} using voice ${ttsVoiceName}`); // Log voice used
-  try {
-    const request = {
-      input: { text: text },
-      // --- Use configured TTS voice ---
-      voice: { languageCode: "ja-JP", name: ttsVoiceName },
-      audioConfig: { audioEncoding: "MP3" as const },
-    };
-    console.log(`[AI Service] Calling synthesizeSpeech...`);
-    const [response] = await ttsClient.synthesizeSpeech(request);
-    const audioContent = response.audioContent;
-    if (!audioContent) {
-      console.error(
-        "generateTtsAudio: Failed to synthesize speech, audioContent is empty.",
-      );
-      return null;
-    }
-    console.log(`[AI Service] Speech synthesized successfully.`);
-    const bucket = storage.bucket(bucketName);
-    const filePath = `tts-audio/${gcsFilename}.mp3`;
-    const file = bucket.file(filePath);
-    console.log(
-      `[AI Service] Uploading TTS audio to gs://${bucketName}/${filePath}`,
-    );
-    await file.save(audioContent, {
-      metadata: { contentType: "audio/mpeg" },
-    });
-    console.log(`[AI Service] File uploaded successfully.`);
-    console.log(`[AI Service] Generating Signed URL...`);
-    const expiresDate = new Date();
-    expiresDate.setFullYear(expiresDate.getFullYear() + 100);
-    const [signedUrl] = await file.getSignedUrl({
-      action: "read",
-      expires: expiresDate,
-    });
-    console.log(`[AI Service] Signed URL generated.`);
-    return signedUrl;
-  } catch (error) {
-    console.error(
-      `Error in generateTtsAudio for filename ${gcsFilename}:`,
-      error,
-    );
-    return null;
-  }
-};
-
-
-/**
- * Generates an explanation for a given text using a specified Gemini model via streaming.
- */
-export const generateExplanation = async (
-  textToExplain: string,
-  targetLanguage: string,
-): Promise<string> => {
-  // Remove modelName parameter, use configured vertexAiModelName
-  if (!vertexAI) {
-    console.error("generateExplanation: Vertex AI client is not initialized.");
-    throw new ExternalApiError("Vertex AI client failed to initialize.");
-  }
-  if (!textToExplain) {
-    console.warn(
-      "generateExplanation: textToExplain is empty, returning empty string.",
-    );
-    return "";
-  }
-
-  console.log(
-    `[AI Service] Generating explanation for: "${textToExplain}" using model ${vertexAiModelName} (streaming)`, // Indicate streaming
-  );
-
-  try {
-    const generativeModel = vertexAI.getGenerativeModel({
-      model: vertexAiModelName,
-    });
-    const prompt = `Explain the meaning and usage of the ${targetLanguage} word/phrase "${textToExplain}" concisely for a language learner. Keep it simple and clear.`;
-    const request: GenerateContentRequest = { // Type the request
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    };
-
-    console.log(`[AI Service] Sending prompt to Vertex AI (streaming)...`);
-    const streamingResp = await generativeModel.generateContentStream(request);
-
-    // --- Aggregate streamed response ---
-    let aggregatedText = "";
-    for await (const item of streamingResp.stream) {
-        // Check if item and necessary properties exist
-        const partText = item?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (typeof partText === 'string') {
-            aggregatedText += partText;
-        } else {
-             console.warn("[AI Service] Received non-text part in stream:", JSON.stringify(item, null, 2));
-        }
-    }
-    // --- End aggregation ---
-
-    // Validate aggregated response
-    const generatedText = aggregatedText; // Use aggregated text
-    if (typeof generatedText !== "string" || generatedText.length === 0) {
-      console.warn(
-        "[AI Service] Received no valid text content from Vertex AI streaming response."
-        // Avoid logging potentially huge aggregated response if it failed validation
-      );
-      throw new ExternalApiError(
-        "Failed to generate explanation: No valid content received from Vertex AI stream.",
-      );
-    }
-    console.log(`[AI Service] Explanation generated successfully (streaming).`);
-    return generatedText.trim();
-  } catch (error: unknown) {
-    console.error(
-      `[AI Service] Error generating explanation for "${textToExplain}" (streaming):`, // Indicate streaming in error
-      error,
-    );
-    if (isAppError(error)) {
-      throw error;
-    } else {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unknown error during Vertex AI call.";
-      throw new ExternalApiError(
-        `Failed to generate explanation via Vertex AI stream: ${message}`,
-        error instanceof Error ? error : undefined,
-      );
-    }
-  }
-};
-
-/**
- * Translates text from a source language to a target language using a specified Gemini model via streaming.
- */
-export const generateTranslation = async (
-  textToTranslate: string,
-  sourceLanguage: string,
-  targetLanguageCode: string,
-): Promise<string> => {
-  // Remove modelName parameter, use configured vertexAiModelName
-  if (!vertexAI) {
-    console.error("generateTranslation: Vertex AI client is not initialized.");
-    throw new ExternalApiError("Vertex AI client failed to initialize.");
-  }
-  if (!textToTranslate) {
-    console.warn(
-      "generateTranslation: textToTranslate is empty, returning empty string.",
-    );
-    return "";
-  }
-  if (!sourceLanguage || !targetLanguageCode) {
-    console.error(
-      "generateTranslation: sourceLanguage or targetLanguageCode is missing.",
-    );
-    throw new AppError(
-      "Source and target language codes are required for translation.",
-      400,
-      ERROR_CODES.VALIDATION_ERROR,
-    );
-  }
-
-  console.log(
-    `[AI Service] Generating translation for: "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode} using model ${vertexAiModelName} (streaming)`, // Indicate streaming
-  );
-
-  try {
-    const generativeModel = vertexAI.getGenerativeModel({
-      model: vertexAiModelName,
-    });
-    const prompt = `Translate the following text accurately from ${sourceLanguage} to ${targetLanguageCode}. Return only the translated text, without any introduction, explanation, or formatting like markdown.\n\nText to translate:\n"${textToTranslate}"\n\nTranslated text:`;
-    const request: GenerateContentRequest = { // Type the request
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    };
-
-    console.log(`[AI Service] Sending translation prompt to Vertex AI (streaming)...`);
-    const streamingResp = await generativeModel.generateContentStream(request);
-
-    // --- Aggregate streamed response ---
-    let aggregatedText = "";
-     for await (const item of streamingResp.stream) {
-        // Check if item and necessary properties exist
-        const partText = item?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (typeof partText === 'string') {
-            aggregatedText += partText;
-        } else {
-             console.warn("[AI Service] Received non-text part in stream:", JSON.stringify(item, null, 2));
-        }
-    }
-    // --- End aggregation ---
-
-    // Validate aggregated response
-    const translatedText = aggregatedText; // Use aggregated text
-    if (typeof translatedText !== "string") {
-      console.warn(
-        "[AI Service] Received no valid text content from Vertex AI translation streaming response."
-         // Avoid logging potentially huge aggregated response if it failed validation
-      );
-      throw new ExternalApiError(
-        "Failed to generate translation: No valid content received from Vertex AI stream.",
-      );
-    }
-    console.log(`[AI Service] Translation generated successfully (streaming).`);
-    return translatedText.trim().replace(/^"|"$/g, ''); // Keep quote removal
-  } catch (error: unknown) {
-    console.error(
-      `[AI Service] Error generating translation for "${textToTranslate}" from ${sourceLanguage} to ${targetLanguageCode} (streaming):`, // Indicate streaming in error
-      error,
-    );
-    if (isAppError(error)) {
-      throw error;
-    } else {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unknown error during Vertex AI call.";
-      throw new ExternalApiError(
-        `Failed to generate translation via Vertex AI stream: ${message}`,
-        error instanceof Error ? error : undefined,
-      );
-    }
-  }
-};
-```
-
-## File: services/card.service.ts
-```typescript
-import prisma from "@/lib/db"; // Use the same prisma instance as other services
-import { Card, AiContentType, AICardContent } from "@prisma/client"; // Import Card type directly again
-import {
-  AppError,
-  NotFoundError,
-  PermissionError,
-  DatabaseError,
-} from "@/lib/errors"; // Import custom errors
-import { generateExplanation, generateTranslation } from "@/services/ai.service";
-import type { Result } from "@/types"; // Import Result type
-import type { CardUpdatePayload } from "@/lib/zod"; // Import Zod payload type
-
-// Define options and result types for pagination
-interface GetCardsByDeckIdOptions {
-  limit?: number;
-  offset?: number;
-}
-
-// ↓↓↓ 戻り値の型 Card[] を Card と関連 AICardContent を含む型に変更 (Prisma の推論を利用することも可能) ↓↓↓
-// 参考: Prisma が生成する型を使う場合: import { Prisma } from '@prisma/client'; type CardWithAiContents = Prisma.CardGetPayload<{ include: { aiContents: true } }>;
-// ここではシンプルに Card[] のままでも良いが、取得内容が変わることを示すコメントを追加
-type GetCardsByDeckIdResult = {
-  // data: Card[]; // Card に aiContents が含まれるようになる
-  data: (Card & { aiContents: AICardContent[] })[]; // より正確な型 (AICardContent のインポートが必要)
-  totalItems: number;
-};
-
-/**
- * Fetches cards belonging to a specific deck with pagination, ensuring user ownership.
- * @param userId - The ID of the user requesting the cards.
- * @param deckId - The ID of the deck.
- * @param options - Optional parameters for pagination (limit, offset).
- * @returns A promise that resolves to an object containing the cards array and total item count.
- * @throws {NotFoundError} If the deck is not found.
- * @throws {PermissionError} If the user does not own the deck.
- * @throws {DatabaseError} If any other database error occurs.
- */
-export const getCardsByDeckId = async (
-  userId: string,
-  deckId: string,
-  options: GetCardsByDeckIdOptions = {},
-): Promise<GetCardsByDeckIdResult> => {
-  // Set default values and validate limit/offset
-  const limit = options.limit ?? 10; // Default limit: 10
-  const offset = options.offset ?? 0; // Default offset: 0
-  const validatedLimit = Math.max(1, limit); // Ensure limit is at least 1
-  const validatedOffset = Math.max(0, offset); // Ensure offset is non-negative
-
-  try {
-    // 1. Verify deck existence and ownership (existing logic)
-    const deck = await prisma.deck.findUnique({
-      where: {
-        id: deckId,
-      },
-      select: {
-        // Only select userId to check ownership, avoid fetching full deck
-        userId: true,
-      },
-    });
-
-    if (!deck) {
-      throw new NotFoundError(`Deck with ID ${deckId} not found.`);
-    }
-    if (deck.userId !== userId) {
-      throw new PermissionError(
-        `User does not have permission to access deck with ID ${deckId}.`,
-      );
-    }
-
-    // 2. Fetch cards and count total items in parallel if ownership is confirmed
-    const [cards, totalItems] = await prisma.$transaction([
-      prisma.card.findMany({
-        where: { deckId: deckId }, // Only fetch cards for this deck
-        orderBy: { createdAt: "asc" }, // Or your desired order
-        skip: validatedOffset, // Use validated offset for skipping
-        take: validatedLimit,
-        include: {
-          aiContents: {
-            // 必要なら 여기서 where や select でさらに絞り込むことも可能
-            // 例: contentType や language で絞る
-            // where: { language: 'en' },
-            select: {
-              // 返すフィールドを選択 (id は任意、他は通常必要)
-              id: true,
-              cardId: true,
-              contentType: true,
-              language: true,
-              content: true,
-              createdAt: true, // 必要に応じて
-              updatedAt: true, // 必要に応じて
-            },
-          },
-        }, // Use validated limit for taking
-      }),
-      prisma.card.count({
-        where: { deckId: deckId }, // Count cards only for this deck
-      }),
-    ]);
-
-    // 3. Return the paginated data and total count
-    return {
-      data: cards,
-      totalItems: totalItems,
-    };
-  } catch (error) {
-    // Re-throw known application errors (existing logic)
-    if (error instanceof NotFoundError || error instanceof PermissionError) {
-      throw error;
-    }
-    // Handle other potential errors
-    console.error(
-      `Database error fetching cards for deck ${deckId} by user ${userId}:`,
-      error,
-    );
-    throw new DatabaseError(
-      "Failed to fetch cards due to a database error.",
-      error instanceof Error ? error : undefined,
-    );
-  }
-};
-
-/**
- * Creates a new card, ensuring user ownership, and attempts to generate
- * explanation (en) and translation (en->ja) for the 'front' text,
- * saving them to the AICardContent table.
- * @param userId - The ID of the user creating the card.
- * @param data - Object containing deckId, front text, and back text.
- * @returns A promise that resolves to the newly created card object (without aiContents populated initially).
- * @throws {NotFoundError} If the deck is not found.
- * @throws {PermissionError} If the user does not own the deck.
- * @throws {DatabaseError} If the initial card creation fails.
- **/
-
-export const createCard = async (
-  userId: string,
-  data: { deckId: string; front: string; back: string },
-): Promise<Card> => {
-  // 戻り値は Card のまま
-  const { deckId, front, back } = data;
-  let newCard: Card;
-
-  try {
-    // 1. Verify deck existence and ownership (変更なし)
-    const deck = await prisma.deck.findUnique({
-      where: { id: deckId },
-      select: { userId: true },
-    });
-
-    if (!deck) {
-      throw new NotFoundError(`Deck with ID ${deckId} not found.`);
-    }
-    if (deck.userId !== userId) {
-      throw new PermissionError(
-        `User does not have permission to add cards to deck with ID ${deckId}.`,
-      );
-    }
-
-    // 2. Create the card in the database (変更なし)
-    newCard = await prisma.card.create({
-      data: {
-        front,
-        back,
-        deckId,
-      },
-    });
-
-    // --- AI コンテンツ生成・保存 ---
-
-    // 3. Generate Explanation (English)
-    try {
-      const explanationLanguage = "en"; // ★仮定
-      console.log(
-        `[Card Service] Attempting to generate explanation for card ${newCard.id}, lang: ${explanationLanguage}`,
-      );
-      const explanationContent = await generateExplanation(
-        front,
-        explanationLanguage,
-      );
-
-      if (explanationContent) {
-        // ↓↓↓ ★★★ ここを修正: prisma.aICardContent.create を使う ★★★ ↓↓↓
-        await prisma.aICardContent.create({
-          data: {
-            cardId: newCard.id, // 作成されたカードの ID を指定
-            contentType: AiContentType.EXPLANATION, // Enum を使用
-            language: explanationLanguage,
-            content: explanationContent,
-          },
-        });
-        console.log(
-          `[Card Service] Explanation (${explanationLanguage}) saved for card ${newCard.id}.`,
-        );
-        // ↑↑↑ ★★★ 修正ここまで ★★★ ↑↑↑
-      }
-    } catch (aiError) {
-      // AI エラーはログに残すが、カード作成は続行
-      console.error(
-        `[Card Service] Failed to generate/save explanation for card ${newCard.id}. Error:`,
-        aiError,
-      );
-    }
-
-    // 4. Generate Translation (English to Japanese)
-    try {
-      const sourceLanguage = "en"; // ★仮定
-      const targetLanguage = "ja"; // ★仮定
-      console.log(
-        `[Card Service] Attempting to generate translation for card ${newCard.id}, ${sourceLanguage} -> ${targetLanguage}`,
-      );
-      const translationContent = await generateTranslation(
-        front,
-        sourceLanguage,
-        targetLanguage,
-      );
-
-      if (translationContent) {
-        // ↓↓↓ ★★★ ここも修正: prisma.aICardContent.create を使う ★★★ ↓↓↓
-        await prisma.aICardContent.create({
-          data: {
-            cardId: newCard.id,
-            contentType: AiContentType.TRANSLATION, // Enum を使用
-            language: targetLanguage, // 翻訳先の言語コード
-            content: translationContent,
-          },
-        });
-        console.log(
-          `[Card Service] Translation (${targetLanguage}) saved for card ${newCard.id}.`,
-        );
-        // ↑↑↑ ★★★ 修正ここまで ★★★ ↑↑↑
-      }
-    } catch (aiError) {
-      // AI エラーはログに残すが、カード作成は続行
-      console.error(
-        `[Card Service] Failed to generate/save translation for card ${newCard.id}. Error:`,
-        aiError,
-      );
-    }
-
-    // 5. Return the initially created card object
-    //   (aiContents を含まない Card オブジェクト)
-    return newCard;
-  } catch (error) {
-    // Handle errors from initial deck check or prisma.card.create (変更なし)
-    if (error instanceof NotFoundError || error instanceof PermissionError) {
-      throw error;
-    }
-    console.error(
-      `Database error creating card in deck ${deckId} by user ${userId}:`,
-      error,
-    );
-    throw new DatabaseError(
-      "Failed to create card due to a database error.",
-      error instanceof Error ? error : undefined,
-    );
-  }
-};
-/**
- * Deletes a specific card, ensuring user ownership.
- * @param userId - The ID of the user performing the deletion.
- * @param deckId - The ID of the deck the card belongs to (for permission check).
- * @param cardId - The ID of the card to delete.
- * @returns A promise that resolves when the card is deleted.
- * @throws {NotFoundError} If the card is not found or doesn't belong to the specified deck.
- * @throws {PermissionError} If the user does not own the deck the card belongs to.
- * @throws {DatabaseError} If any other database error occurs.
- */
-export const deleteCard = async (
-  userId: string,
-  deckId: string,
-  cardId: string,
-): Promise<void> => {
-  try {
-    // 1. Verify card existence and ownership via the deck
-    // Use findFirstOrThrow to ensure the card exists and belongs to the user's deck.
-    // This implicitly checks deckId match as well.
-    await prisma.card.findFirstOrThrow({
-      where: {
-        id: cardId,
-        deck: {
-          id: deckId, // Ensure it's in the correct deck
-          userId: userId, // Ensure the deck belongs to the user
-        },
-      },
-    });
-
-    // 2. Delete the card if ownership is confirmed
-    await prisma.card.delete({
-      where: {
-        id: cardId,
-      },
-    });
-  } catch (error: unknown) {
-    // Handle Prisma's specific 'RecordNotFound' error (P2025) and our NotFoundError
-    let isPrismaNotFoundError = false;
-    if (typeof error === "object" && error !== null && "code" in error) {
-      isPrismaNotFoundError = (error as { code?: unknown }).code === "P2025";
-    }
-
-    if (isPrismaNotFoundError || error instanceof NotFoundError) {
-      // P2025 can mean either the card doesn't exist OR the deck/user condition failed.
-      // We treat both as a NotFound or Permission issue from the client's perspective.
-      // A more specific check could be done by querying the card first, then the deck,
-      // but findFirstOrThrow is more concise for this combined check.
-      throw new NotFoundError(
-        `Card with ID ${cardId} not found or user does not have permission.`,
-      );
-    }
-    // Re-throw known application errors (though findFirstOrThrow handles NotFound implicitly)
-    if (error instanceof PermissionError) {
-      // Keep this in case other permission logic is added
-      throw error;
-    }
-    // Handle other potential database errors
-    console.error(
-      `Database error deleting card ${cardId} from deck ${deckId} by user ${userId}:`,
-      error,
-    );
-    throw new DatabaseError(
-      "Failed to delete card due to a database error.",
-      error instanceof Error ? error : undefined,
-    );
-  }
-};
-/**
- * Updates a specific card's front and/or back text, ensuring user ownership.
- * @param userId - The ID of the user performing the update.
- * @param deckId - The ID of the deck the card belongs to (for permission check).
- * @param cardId - The ID of the card to update.
- * @param data - An object containing optional 'front' and 'back' text to update.
- * @returns A promise that resolves to the updated card object.
- * @throws {NotFoundError} If the card is not found or doesn't belong to the specified deck owned by the user.
- * @throws {PermissionError} If the user does not own the deck (implicitly checked).
- * @throws {DatabaseError} If any other database error occurs.
- */
-export const updateCard = async (
-  userId: string,
-  deckId: string,
-  cardId: string,
-  data: CardUpdatePayload, // Use Zod payload type
-): Promise<Result<Card, AppError>> => {
-  // Return Result type with direct Card
-
-  // 1. Verify card existence and ownership via the deck using findFirst
-  const card = await prisma.card.findFirst({
-    where: {
-      id: cardId,
-      deck: {
-        id: deckId,
-        userId: userId,
-      },
-    },
-    select: { id: true }, // Only need to confirm existence and ownership
-  });
-
-  if (!card) {
-    // Card not found or user doesn't have permission for this deck/card
-    return {
-      ok: false,
-      error: new NotFoundError(
-        `Card with ID ${cardId} not found or user does not have permission for deck ${deckId}.`,
-      ),
-    };
-  }
-
-  // 2. Prepare update data (already validated by Zod schema in API layer)
-  // Zod refine ensures at least one field is present
-  const updateData: CardUpdatePayload = {};
-  if (data.front !== undefined) {
-    updateData.front = data.front;
-  }
-  if (data.back !== undefined) {
-    updateData.back = data.back;
-  }
-
-  // Note: The check for empty updateData is less critical now
-  // because the Zod schema's .refine() ensures at least one field is provided.
-  // if (Object.keys(updateData).length === 0) {
-  //   // This case should ideally not happen if Zod validation is correct
-  //   // If it does, returning the existing card might be an option, but requires fetching it again.
-  //   // For simplicity, we rely on the validation layer.
-  // }
-
-  // 3. Execute the update within a try...catch for database errors
-  try {
-    const updatedCard = await prisma.card.update({
-      where: {
-        id: cardId,
-        // No need for deck/userId check here again as findFirst confirmed it
-      },
-      data: updateData,
-    });
-
-    // 4. Return success result
-    return { ok: true, value: updatedCard };
-  } catch (error: unknown) {
-    // Handle potential database errors during the update operation
-    console.error(
-      `Database error updating card ${cardId} in deck ${deckId} by user ${userId}:`,
-      error,
-    );
-    // Return a DatabaseError Result
-    return {
-      ok: false,
-      error: new DatabaseError(
-        "Failed to update card due to a database error.",
-        error instanceof Error ? error : undefined,
-      ),
-    };
-  }
-};
-```
-
-## File: services/deck.service.ts
-```typescript
-// src/services/deck.service.ts
-// import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library'; // ★★★ Removed unused import
-import type { Deck } from '@prisma/client'; // Import Deck type
-import prisma from '@/lib/db';
-import { AppError, ConflictError, DatabaseError, NotFoundError, PermissionError } from '@/lib/errors'; // ★ Import AppError
-import type { DeckCreatePayload, DeckUpdatePayload } from '@/lib/zod'; // ★ Import DeckUpdatePayload
-import type { Result } from '@/types'; // ★ Import Result type
-
-// --- Pagination types ---
-interface GetAllDecksOptions {
-  limit?: number;
-  offset?: number;
-}
-type GetAllDecksResult = {
-  data: Deck[];
-  totalItems: number;
-};
-
-// --- Service Functions ---
-
-export const createDeck = async (userId: string, data: DeckCreatePayload): Promise<Deck> => {
-  try {
-    const newDeck = await prisma.deck.create({
-      data: { userId, name: data.name, description: data.description },
-    });
-    return newDeck;
-  } catch (error) {
-    // ★★★ Added description for ts-expect-error ★★★
-    // @ts-expect-error Prisma error P2002 check requires direct access to 'code' property which might not exist on generic error type
-    if (error && typeof error === 'object' && error.code === 'P2002') {
-      console.log('[SERVICE CATCH BLOCK] P2002 code detected. Throwing ConflictError.');
-      throw new ConflictError(`A deck with the name "${data.name}" already exists.`);
-    }
-    console.error('[SERVICE CATCH BLOCK] Not P2002 or check failed. Throwing DatabaseError.');
-    throw new DatabaseError('Failed to create the deck due to a database error.', error instanceof Error ? error : undefined);
-  }
-};
-
-export const getAllDecks = async (
-    userId: string,
-    options: GetAllDecksOptions = {}
-): Promise<GetAllDecksResult> => {
-    const limit = options.limit ?? 10;
-    const offset = options.offset ?? 0;
-    const validatedLimit = Math.max(1, limit);
-    const validatedOffset = Math.max(0, offset);
-
-  try {
-    const [decks, totalItems] = await prisma.$transaction([
-        prisma.deck.findMany({
-          where: { userId: userId },
-          orderBy: { createdAt: 'desc' },
-          skip: validatedOffset,
-          take: validatedLimit,
-        }),
-        prisma.deck.count({
-          where: { userId: userId },
-        }),
-      ]);
-    return { data: decks, totalItems: totalItems };
-  } catch (error) {
-    console.error(`Database error retrieving decks for user ${userId} with pagination:`, error);
-    throw new DatabaseError('Failed to retrieve decks due to a database error.', error instanceof Error ? error : undefined);
-  }
-};
-
-export const deleteDeck = async (userId: string, deckId: string): Promise<void> => {
-  try {
-    const deleteResult = await prisma.deck.deleteMany({
-      where: { id: deckId, userId: userId },
-    });
-    if (deleteResult.count === 0) {
-      throw new NotFoundError(`Deck with ID ${deckId} not found or user does not have permission.`);
-    }
-  } catch (error) {
-    if (error instanceof NotFoundError) throw error;
-    console.error(`Database error deleting deck ${deckId} for user ${userId}:`, error);
-    throw new DatabaseError('Failed to delete deck due to a database error.', error instanceof Error ? error : undefined);
-  }
-};
-
-export const getDeckById = async (userId: string, deckId: string): Promise<Deck> => {
-  try {
-    const deck = await prisma.deck.findUnique({ where: { id: deckId } });
-    if (!deck) throw new NotFoundError(`Deck with ID ${deckId} not found.`);
-    if (deck.userId !== userId) throw new PermissionError(`User does not have permission to access deck with ID ${deckId}.`);
-    return deck;
-  } catch (error) {
-    if (error instanceof NotFoundError || error instanceof PermissionError) throw error;
-    console.error(`Database error retrieving deck ${deckId} for user ${userId}:`, error);
-    throw new DatabaseError('Failed to retrieve deck due to a database error.', error instanceof Error ? error : undefined);
-  }
-};
-/**
- * Updates an existing deck for a given user. Returns a Result object.
- * @param userId - The ID of the user updating the deck.
- * @param deckId - The ID of the deck to update.
- * @param data - The data to update (name, description). At least one field must be provided.
- * @returns A Promise resolving to a Result object containing the updated Deck or an AppError.
- */
-export const updateDeck = async (
-  userId: string,
-  deckId: string,
-  data: DeckUpdatePayload
-): Promise<Result<Deck, AppError>> => { // ★ 戻り値の型を Result に変更 ★
-
-  // 1. Verify deck existence first using findUnique (not findUniqueOrThrow)
-  const currentDeck = await prisma.deck.findUnique({
-    where: { id: deckId },
-  });
-
-  if (!currentDeck) {
-    return { ok: false, error: new NotFoundError(`Deck with ID ${deckId} not found.`) };
-  }
-
-  // 2. Check ownership
-  if (currentDeck.userId !== userId) {
-    return { ok: false, error: new PermissionError(`User does not have permission to update deck with ID ${deckId}.`) };
-  }
-
-  // 3. Perform the update within a try...catch for specific Prisma errors
-  try {
-    const updatedDeck = await prisma.deck.update({
-      where: {
-        id: deckId,
-        // userId: userId, // Optional: Redundant check but adds safety
-      },
-      data: {
-        ...(data.name !== undefined && { name: data.name }),
-        ...(data.description !== undefined && { description: data.description }),
-      },
-    });
-
-    // 4. Return success result
-    return { ok: true, value: updatedDeck };
-
-  } catch (error: unknown) {
-    // Handle potential errors during the update operation
-
-    // Prisma's Unique constraint violation (P2002) for deck name
-    // @ts-expect-error Check for Prisma specific error code if needed - add description
-    if (error && typeof error === 'object' && error.code === 'P2002') {
-       console.log('[SERVICE UPDATE CATCH BLOCK] P2002 detected. Returning ConflictError.');
-       return {
-         ok: false,
-         // ★ ConflictError を error として返す ★
-         error: new ConflictError(`A deck with the name "${data.name}" likely already exists.`)
-       };
-    }
-
-    // Other potential database errors
-    console.error(`Database error updating deck ${deckId} for user ${userId}:`, error);
-    // ★ DatabaseError を error として返す ★
-    return {
-      ok: false,
-      error: new DatabaseError('Failed to update deck due to a database error.', error instanceof Error ? error : undefined)
-    };
-  }
-};
-```
-
-## File: types/api.types.ts
-```typescript
-// src/types/api.types.ts (AICardContent 導入 + DeckApiResponse 修正版)
-
-// ↓↓↓ Prisma Client から必要な型や Enum を直接インポート ↓↓↓
-// Import Prisma generated types using relative path
-// Revert to named imports using relative path after confirming types exist in index.d.ts
-import {
-  type Deck as PrismaDeck,
-  type Card as PrismaCard,
-  type AICardContent as PrismaAICardContent,
-  type AiContentType,
-} from "../../node_modules/.prisma/client";
-
-// Zod から Payload 型をインポート (変更なし)
-// Corrected import path from 'lib/zod' to '../lib/zod'
-import {
-  type DeckCreatePayload as DeckCreatePayloadFromZod,
-  type DeckUpdatePayload as DeckUpdatePayloadFromZod,
-} from "../lib/zod";
-
-/**
- * Payload for creating a new deck (POST /api/decks).
- */
-export type DeckCreatePayload = DeckCreatePayloadFromZod;
-
-/**
- * Payload for updating an existing deck (PUT /api/decks/{deckId}).
- */
-export type DeckUpdatePayload = DeckUpdatePayloadFromZod;
-
-// --- ↓↓↓ 新しい型定義: AICardContent の API レスポンス ↓↓↓ ---
-/**
- * Structure of an AI-generated content object returned within a Card object by the API.
- * Represents a piece of content like an explanation or translation for a specific language.
- */
-export type AICardContentApiResponse = Pick<
-  PrismaAICardContent, // Use alias
-  "id" | "contentType" | "language" | "content" | "createdAt" | "updatedAt"
-  // cardId は CardApiResponse にネストされるため通常は含めない
->;
-// --- ↑↑↑ 新しい型定義ここまで ↑↑↑ ---
-
-// --- ↓↓↓ CardApiResponse 型を修正 ↓↓↓ ---
-/**
- * Structure of a card object returned by the API.
- * Includes associated AI-generated content in the `aiContents` array.
- * Excludes fields like `explanation`, `translation` which are now managed within `aiContents`.
- */
-export type CardApiResponse = Pick<
-  PrismaCard, // Use alias
-  // Card の基本フィールドを選択
-  | "id"
-  | "front"
-  | "back"
-  | "deckId"
-  | "createdAt"
-  | "updatedAt"
-  | "interval"
-  | "easeFactor"
-  | "nextReviewAt"
-  | "frontAudioUrl"
-  | "backAudioUrl"
-  // explanation, translation は削除された
-> & {
-  // aiContents 配列を追加
-  aiContents: AICardContentApiResponse[];
-};
-// --- ↑↑↑ CardApiResponse 型修正ここまで ↑↑↑ ---
-
-// --- ↓↓↓ DeckApiResponse 型を修正 (cards 配列を削除) ↓↓↓ ---
-/**
- * Structure of a deck object returned by the API (e.g., GET /api/decks/{deckId}).
- * Contains only core deck information, excluding the list of cards.
- * The list of cards for a deck should be fetched via the dedicated cards endpoint.
- */
-export type DeckApiResponse = Pick<
-  PrismaDeck, // Use alias
-  "id" | "name" | "description" | "createdAt" | "updatedAt" | "userId" // userId も API 設計に応じて含めるか検討
-  // 'cards' プロパティは削除
->;
-// --- ↑↑↑ DeckApiResponse 型修正ここまで ↑↑↑ ---
-
-/**
- * Standard error response structure for API errors. (変更なし)
- */
-export type ApiErrorResponse = {
-  error: string; // Consider using a stricter type based on ERROR_CODES
-  message: string;
-  details?: unknown;
-};
-
-/**
- * Structure for pagination metadata returned by the API. (変更なし)
- */
+// 汎用ページネーションメタデータ
 export interface PaginationMeta {
   offset: number;
   limit: number;
   totalItems: number;
-  _links: {
+  _links?: {
     self: string;
-    next: string | null;
-    previous: string | null;
+    first?: string;
+    prev?: string;
+    next?: string;
+    last?: string;
   };
 }
 
-// --- PaginatedDecksResponse (変更なし、ただし data の型は修正後の DeckApiResponse に依存) ---
-/**
- * Structure for the paginated response for decks. Contains core deck info only.
- */
-export interface PaginatedDecksResponse {
-  data: DeckApiResponse[]; // cards を含まない DeckApiResponse の配列
+// 汎用ページネーションレスポンス
+export interface PaginatedResponse<T> {
+  data: T[];
   pagination: PaginationMeta;
 }
 
-// --- PaginatedCardsResponse (data の型が更新された CardApiResponse を参照) ---
-/**
- * Structure for the paginated response for cards. Contains Card objects with their associated aiContents.
- */
-export interface PaginatedCardsResponse {
-  data: CardApiResponse[]; // aiContents を含む CardApiResponse の配列
-  pagination: PaginationMeta;
+// 標準エラーレスポンス
+export interface ApiErrorResponse {
+  error: string; // e.g., "NOT_FOUND", "VALIDATION_ERROR"
+  message: string;
+  details?: unknown;
 }
 
-export type { AiContentType }; // ← この行を追加
+// 他の Payload 型 (DeckCreatePayload, DeckUpdatePayload など) も必要に応じて定義
 ```
 
-## File: types/index.ts
+- Request Body のバリデーションは API Route Handler 内で Zod (`src/lib/zod.ts`) を用いて行います。
+
+## 8. 認証・認可 (修正)
+
+- **認証:** Supabase Auth の JWT を利用 (`Authorization: Bearer <token>`)。
+- **認可:** 主に Supabase **RLS** で DB レベルで制御。API Route や Service 層でも必要に応じて所有権チェックを実施。`AICardContent` に対する操作も `Card` の所有権に基づいて認可する必要があります。
+
+## 9. ステータスコード (変更なし)
+
+- 標準的な HTTP ステータスコード (200, 201, 204, 400, 401, 403, 404, 409, 500 など) を適切に返却します。
+
+## 10. エラーレスポンス (修正)
+
+- `docs/error-handling.md` で定義された標準 JSON 形式 (`{ error: string, message: string, details?: any }`) で返却します。`error` プロパティには `lib/errors.ts` で定義された `errorCode` を使用します。
+- API はエラー発生時、可能な限りこの標準形式で JSON を返します（`handleApiError` により生成）。
+- `AICardContent` の操作に関するエラー（例: ユニーク制約違反 `[cardId, contentType, language]`）も適切なエラーコード (`RESOURCE_CONFLICT` など) で返す必要があります。
+
+## 11. API レスポンスのローカライズ (変更なし)
+
+- API の URL は言語に依存しません。
+- API が返す**エラーメッセージ等**をリクエスト元の言語に合わせる必要がある場合は、将来的に HTTP リクエストヘッダーの **`Accept-Language`** を参照して処理することを検討します (現状未実装)。AI コンテンツ (`aiContents`) の言語は `language` フィールドで示されます。
+
+## 12. バージョニング (変更なし)
+
+- 初期リリースでは考慮しません。将来的に破壊的変更が必要な場合は URL パス (`/api/v2/...`) 等でバージョニングします。
+
+## 13. 非同期 API Route Handler における `params` の扱い (Next.js 15+ 注意点 - 変更なし)
+
+- `async` 関数として定義された API Route Handler 内で `params` の値を使用する場合は、プロパティにアクセスする前に、**必ず `context.params` オブジェクト全体を `await` してください。**
+
+**背景:**
+
+Next.js 15 (およびそれ以前の準備バージョン) では、パフォーマンス最適化の一環として、API Route Handler に渡される `params` オブジェクト（通常、第二引数の `context` オブジェクト経由でアクセス: `context.params`）は非同期 API として扱われるようになりました。
+
+**問題:**
+
+`async function` として定義されたハンドラ内で、`context.params` のプロパティ（例: `context.params.deckId` や `context.params.locale`）に `await` を使用せずに直接アクセスしようとすると、実行時に `Error: Route ... used \`params.property\`. \`params\` should be awaited...` というエラーまたは警告が発生します。
+
+**解決策:**
+
+`async` 関数として定義された API Route Handler 内で `params` の値を使用する場合は、プロパティにアクセスする前に、**必ず `context.params` オブジェクト全体を `await` してください。**
+
+**実装例:**
+
 ```typescript
-/**
- * Barrel file for exporting types from the types directory.
- */
-import type { AppError } from '../lib/errors'; // AppError をインポート
+// src/app/[locale]/(api)/api/decks/[deckId]/route.ts (GETハンドラの例)
 
-export type Result<T, E = AppError> = { ok: true; value: T } | { ok: false; error: E };
+import { NextResponse } from 'next/server';
+import { getServerUserId } from '@/lib/auth';
+import { getDeckById } from '@/services/deck.service';
+import { handleApiError } from '@/lib/errors';
 
-export * from './api.types';
+// context の型を定義 (例)
+type Context = {
+  params: { locale: string; deckId: string };
+};
 
-// Add exports from other type files here as needed
-// export * from './another.types';
-```
-
-## File: middleware.ts
-```typescript
-// src/middleware.ts
-import { NextRequest, NextResponse } from 'next/server';
-import createIntlMiddleware from 'next-intl/middleware';
-import { createMiddlewareClient } from '@/lib/supabase';
-
-const locales = ['en', 'ja'];
-const defaultLocale = 'en'; // Needs to be uncommented
-
-const intlMiddleware = createIntlMiddleware({
-  locales: locales,
-  defaultLocale: defaultLocale,
-  localePrefix: 'as-needed'
-});
-
-export async function middleware(req: NextRequest) {
-  // 1. Create the base response object. Supabase needs this to potentially set cookies.
-  const res = NextResponse.next();
-
-  // 2. Run the intl middleware first.
-  const intlResponse = intlMiddleware(req);
-
-  // 3. Check if intlMiddleware wants to redirect or rewrite.
-  // If so, respect that and return its response immediately.
-  // We check headers because intlMiddleware might add locale-specific headers
-  // even without a full redirect/rewrite.
-  if (intlResponse.headers.get('location') || intlResponse.headers.get('x-middleware-rewrite')) {
-    return intlResponse;
-  }
-
-  // 4. If intl didn't redirect/rewrite, proceed with Supabase auth.
+export async function GET(request: Request, context: Context) {
   try {
-    // Pass both req and the *original* res object to Supabase
-    const supabase = createMiddlewareClient(req, res);
-    await supabase.auth.getSession(); // Refreshes session cookie if needed
-  } catch (e) {
-    console.error("Supabase middleware error:", e);
-    // Optionally handle the error, maybe return an error response
-    // For now, just log it and continue.
-  }
+    // --- NG な書き方 ---
+    // const deckId_bad = context.params.deckId; // ← await しないとエラーが出る
 
-  // 5. Return the original response object (`res`).
-  // This object might have been modified by Supabase (e.g., updated auth cookie).
-  // It also implicitly carries any headers set by intlMiddleware that weren't redirects/rewrites.
-  return res;
-}
+    // --- OK な書き方 ---
+    // context.params を await してから分割代入で取り出す
+    const { deckId, locale } = await context.params;
 
+    // --- 以降の処理 ---
+    const userId = await getServerUserId();
+    if (!userId) {
+      // ... 認証エラー処理 ...
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-// middleware.ts の config 部分 (推奨)
-// Keep the config as it is necessary for the middleware to run
-export const config = {
-  matcher: [
-    // Match all paths except for specific assets and API routes.
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)', // Added 'api|' to exclude API routes
-  ]
-};
-```
-
-## File: app/globals.css
-```css
-/* src/app/globals.css (テスト用 - @tailwind 以外をコメントアウト) */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* --- 以下を一時的にコメントアウト --- */
-/*
-:root {
-  --background: #ffffff; /* Consider removing if using Tailwind colors * /
-  --foreground: #171717; /* Consider removing if using Tailwind colors * /
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    const deckData = await getDeckById(userId, deckId);
+    return NextResponse.json(deckData);
+  } catch (error) {
+    return handleApiError(error);
   }
 }
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-*/
 ```
 
-## File: app/layout.tsx
-```typescript
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { Providers } from "@/components/providers"; // Assuming '@/' alias is configured or use relative path
+## 14. 具体的な API エンドポイント (修正・追加)
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+### 14.1. デッキ API (`/api/decks`)
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+#### GET /api/decks
 
-export const metadata: Metadata = {
-  title: "Create Next App",
-  description: "Generated by create next app",
-};
+- **(修正)** ログインしているユーザー自身のデッキ一覧を**ページネーション付きで**取得します。
+- **認証:** 必須。
+- **クエリパラメータ:** `offset` (number, default: 0), `limit` (number, default: 10)
+- **成功レスポンス (200 OK):** `PaginatedDecksResponse` 型
+- **エラーレスポンス:** 401, 400, 500 - `handleApiError` 形式。
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Providers>{children}</Providers>
-      </body>
-    </html>
-  );
+#### POST /api/decks
+
+- **(修正)** ログインしているユーザー用に新しいデッキを作成します。
+- **認証:** 必須。
+- **リクエストボディ:** `DeckCreatePayload` 型 (`{ name: string, description?: string }`)
+- **成功レスポンス (201 Created):** 作成されたデッキ情報 (`DeckApiResponse` 型、`cardCount` 含む)
+- **エラーレスポンス:** 401, 400, 409, 500 - `handleApiError` 形式。
+
+### 14.2. 個別デッキ API (`/api/decks/{deckId}`)
+
+#### GET /api/decks/{deckId}
+
+- **(修正)** ログインしているユーザーが所有する特定のデッキを取得します。
+- **認証:** 必須。
+- **成功レスポンス (200 OK):** `DeckApiResponse` 型 (`cardCount` 含む)
+- **エラーレスポンス:** 401, 403, 404, 500 - `handleApiError` 形式。
+
+#### PUT /api/decks/{deckId}
+
+- **(修正)** ログインしているユーザーが所有する特定のデッキを更新します。
+- **認証:** 必須。
+- **リクエストボディ:** `DeckUpdatePayload` 型 (`{ name?: string, description?: string | null }`)
+- **成功レスポンス (200 OK):** 更新後のデッキ情報 (`DeckApiResponse` 型、`cardCount` 含む)
+- **エラーレスポンス:** 401, 400, 404, 409, 500 - `handleApiError` 形式。
+
+#### DELETE /api/decks/{deckId}
+
+- **(修正)** ログインしているユーザーが所有する特定のデッキを削除します。
+- **認証:** 必須。
+- **成功レスポンス (204 No Content):** ボディなし。
+- **エラーレスポンス:** 401, 404, 500 - `handleApiError` 形式。
+
+### 14.3. カード API (`/api/decks/{deckId}/cards`, `/api/decks/{deckId}/cards/{cardId}`)
+
+- **(追記/TODO)** これらの API も同様に認証・認可チェックを追加する必要があります。
+- レスポンスの `CardApiResponse` 型が更新されています (上記セクション 6, 7 参照)。
+
+### 14.4. AI 関連 API (新規追加)
+
+#### POST /api/translate
+
+- テキストを翻訳します。
+- **認証:** 不要（または将来的に必要に応じて追加）。
+- **リクエストボディ:** `{ text: string, sourceLanguage: string, targetLanguage: string }`
+- **成功レスポンス (200 OK):** `{ success: true, translation: string }`
+- **エラーレスポンス:** 400, 503, 500 - `handleApiError` 形式。
+
+#### POST /api/tts
+
+- テキストから音声を生成し、GCS に保存、再生用 URL と GCS パスを返します。
+- **認証:** 不要（または将来的に必要に応じて追加）。
+- **リクエストボディ:** `{ text: string, language: string }` (例: "en-US", "ja-JP")
+- **成功レスポンス (200 OK):** `{ success: true, signedUrl: string, gcsPath: string }`
+- **エラーレスポンス:** 400, 503, 500 - `handleApiError` 形式。
+
+#### GET /api/tts/signed-url
+
+- GCS パスから再生用の短時間有効な署名付き URL を取得します。
+- **認証:** 不要。
+- **クエリパラメータ:** `gcsPath` (string, 必須)
+- **成功レスポンス (200 OK):** `{ success: true, signedUrl: string }`
+- **エラーレスポンス:** 400, 404, 503, 500 - `handleApiError` 形式。
+
+#### POST /api/cards/{cardId}/ai-contents
+
+- 特定のカードに紐づく `AICardContent` レコードを作成します。
+- **認証:** 必須。
+- **リクエストボディ:** `{ contentType: AiContentType, language: string, content: string }`
+- **成功レスポンス (201 Created):** 作成された `AICardContent` オブジェクト (`AICardContentApiResponse` 型)
+- **エラーレスポンス:** 401, 400, 403, 404, 409, 500 - `handleApiError` 形式。
+
+## 15. データモデル図 (参考 - 更新版)
+
+```mermaid
+erDiagram
+    User ||--o{ Deck : owns
+    User ||--o{ StudyLog : records
+    Deck ||--o{ Card : contains
+    Card ||--o{ AICardContent : has
+    Card ||--o{ StudyLog : relates_to
+
+    User {
+        String id PK "UUID"
+        String email Unique nullable
+        String name nullable
+        String avatarUrl nullable
+        DateTime createdAt
+        DateTime updatedAt
+    }
+
+    Deck {
+        String id PK "CUID"
+        String name
+        String description nullable
+        String userId FK "UUID"
+        DateTime createdAt
+        DateTime updatedAt
+        # cardCount (Calculated, not in DB model)
+    }
+
+    Card {
+        String id PK "CUID"
+        String front Text
+        String back Text
+        String deckId FK "CUID"
+        Int interval
+        Float easeFactor
+        DateTime nextReviewAt Timestamptz
+        DateTime createdAt
+        DateTime updatedAt
+        # aiContents AICardContent[] (Relation)
+        # frontAudioUrl, backAudioUrl REMOVED
+    }
+
+    AICardContent {
+        String id PK "CUID"
+        String cardId FK "CUID"
+        AiContentType contentType "Enum"
+        String language "e.g., en, ja, en-US"
+        String content Text "Text or GCS Path"
+        DateTime createdAt
+        DateTime updatedAt
+    }
+
+    StudyLog {
+        String id PK "CUID"
+        DateTime reviewedAt
+        StudyRating rating "Enum"
+        Int previousInterval
+        Float previousEaseFactor
+        Int newInterval
+        Float newEaseFactor
+        DateTime nextReviewAt
+        String userId FK "UUID"
+        String cardId FK "CUID"
+    }
+
+    enum AiContentType {
+        EXPLANATION
+        TRANSLATION
+        AUDIO_PRIMARY
+        AUDIO_SECONDARY
+        AUDIO_EXPLANATION
+        AUDIO_TRANSLATION
+    }
+
+    enum StudyRating {
+        AGAIN
+        HARD
+        GOOD
+        EASY
+    }
+```
+````
+
+## File: coding-style.md
+
+````markdown
+# コーディングスタイルガイド
+
+## 1. 目的
+
+コードの一貫性、可読性、保守性を高めるためのスタイルガイドです。
+
+## 2. 自動化ツール
+
+プロジェクトのコード品質と一貫性を保つために、以下の自動化ツールを利用します。
+
+- **フォーマッター:** **Prettier**
+
+  - **目的:** コードの見た目に関するスタイル（インデント、スペース、改行など）を自動で統一します。
+  - **設定:** プロジェクトルートの Prettier 設定ファイル (`prettier.config.js`, `.prettierrc.json` など) に従います。
+  - **運用:** エディタの保存時自動整形 (Format on Save) の利用を強く推奨します。CI (GitHub Actions) でもフォーマットが正しいかのチェック (`bun run format:check` 等) を行うことが望ましいです。
+
+- **リンター:** **ESLint**
+  - **目的:** コードの潜在的なバグ、アンチパターン、およびスタイルガイドライン違反（フォーマッターが扱わない範囲）を静的に解析・検出します。
+  - **設定:** プロジェクトルートにある **`[ESLint設定ファイル名]`** (例: `.eslintrc.json`, `eslint.config.js` など。**実際のファイル名に置き換えてください**) が、適用される ESLint ルールの**唯一の正 (Source of Truth)** となります。この設定ファイルには、TypeScript, React, React Hooks, Next.js 用のプラグインやルールが適切に設定されています（または設定されるべきです）。
+  - **実行:** コードの静的解析とルールチェックは、以下のコマンドで実行します。
+    ```bash
+    bun run lint
+    ```
+    _(package.json の `scripts` 内で定義されているコマンド)_
+  - **必須事項:**
+    - エディタ (VS Code など) に ESLint 拡張機能を導入し、**リアルタイムでのエラー/警告表示と、可能な範囲での自動修正 (Auto Fix on Save) を有効にすること**を強く推奨します。
+    - CI (GitHub Actions) でもこの `lint` コマンドが自動実行され、**エラーなくチェックをパスすることが必須**となります。すべてのコードは、上記の設定ファイルに定義された ESLint ルールに準拠する必要があります。
+
+## 3. TypeScript
+
+- `tsconfig.json` で `strict: true` を有効にします。
+- `any` 型の使用は原則禁止します。具体的な型、`unknown`、ジェネリクスを適切に使用します。
+- 型エイリアス (`type`) とインターフェース (`interface`) は、プロジェクト内で一貫した方針で使用します。（例: オブジェクトや関数の型には `type` を優先的に使用する）。
+- ユーティリティ型 (`Partial`, `Readonly` など) を適切に活用します。
+
+## 4. 命名規則
+
+- **変数、関数:** `camelCase`
+- **クラス、コンポーネント、型エイリアス、インターフェース:** `PascalCase`
+- **定数:** `UPPER_SNAKE_CASE`
+- **ファイル名:**
+  - 一般的な `.ts` ファイル: `kebab-case.ts` (推奨)
+  - React コンポーネントファイル (`.tsx`): `PascalCase.tsx`
+  - テストファイル: `*.test.ts` または `*.spec.ts`
+
+## 5. React / Next.js
+
+- 関数コンポーネントと Hooks を使用します。
+- React Hooks のルールを遵守します。
+- Next.js App Router の規約（ディレクトリ構造、ファイル命名など）に従います。
+- コンポーネントは小さく、単一責任の原則 (SRP) を意識します。
+
+## 6. コメント
+
+- コードを読めばわかる「何をしているか」ではなく、**「なぜ」** そのような実装にしたのか、という意図や背景、複雑なロジックの要点を説明するために書きます。
+- `lib` や `services` 内の複雑な関数や公開するモジュールには JSDoc 形式でのコメントを推奨します。
+- コミット前に不要なコメントアウトされたコードは削除します。
+
+## 7. インポート (`import`)
+
+- ESLint のプラグイン (`eslint-plugin-import` など) や Prettier を利用して、インポート順序を自動で整理します (例: 外部ライブラリ → 内部絶対パス (`@/`) → 相対パス)。
+- `tsconfig.json` の `paths` を設定し、深い階層からの相対パス (`../../...`) を避けるために絶対パス (`@/components/...`) を可能な限り使用します。
+
+## 8. エラーハンドリング
+
+`docs/error-handling.md` で定義された戦略に従います。
+
+## 9. シンプルさ
+
+複雑すぎる実装や時期尚早な最適化よりも、明確でシンプルなコードを優先します。
+````
+
+## File: database-design.md
+
+````markdown
+# データベース設計 v1.2 (AICardContent 拡充: 音声対応)
+
+**(更新日: 2025-04-29)**
+
+## 1. 背景と目的 (変更なし)
+
+当初のデータベース設計では、`Card` モデル内に AI が生成する解説 (`explanation`) と翻訳 (`translation`) を直接カラムとして保持していました。
+
+しかし、今後のアプリケーションの発展、特に**多言語対応**（1つのカードに対して複数言語の解説や翻訳を持たせる可能性）や、**ユーザーの多様な学習スタイル**（例: 学習中の言語での解説と母国語の翻訳を併用したい）への対応を考慮した結果、AI が生成するテキストコンテンツをより柔軟に管理できる設計が必要と判断しました。
+
+さらに、**音声コンテンツ**（テキスト読み上げ）の導入に伴い、テキストだけでなく音声ファイルの参照情報も一元的に管理する必要が出てきました。
+
+そのため、拡張性と柔軟性を高めることを目的に、AI 生成コンテンツ（解説、翻訳、音声ファイル情報）を `Card` モデルから分離し、専用のテーブル (`AICardContent`) で管理する方針へと変更します。
+
+## 2. 主要な変更点
+
+1.  **`AICardContent` テーブルの新設:**
+    - AI によって生成されたコンテンツ（解説テキスト、翻訳テキスト、**音声ファイルの GCS パス**）を格納するための新しいテーブルを作成します。
+    - 各コンテンツがどのカードに属するか (`cardId`)、コンテンツの種類 (`contentType`)、コンテンツの言語 (`language`) を区別して管理します。
+2.  **`Card` モデルの変更:**
+    - 既存の `explanation` および `translation` カラムを削除します。
+    - **(追記)** 既存の `frontAudioUrl` および `backAudioUrl` カラムを削除。音声情報も `AICardContent` で管理するため。
+    - `AICardContent` モデルとの 1 対多リレーションを設定 (`aiContents AICardContent[]`)。
+3.  **`AiContentType` Enum の更新:**
+    - コンテンツの種類（解説、翻訳、**または音声**）を定義する Enum を更新し、音声の種類を詳細化しました。
+4.  **リレーションの追加:**
+    - `Card` モデルと `AICardContent` モデルの間に 1 対多のリレーションを設定します (`Card` 1件に対して複数の `AICardContent` レコードが紐づく）。
+
+### 2.1. `AICardContent` テーブルの新設 (変更なし)
+
+(このセクションは元の v1.1 の内容を指していると思われるため、実質的には上記 1. と統合される)
+... (v1.1 の内容がここにあったと仮定) ...
+
+### 2.2. `Card` モデルの変更
+
+- 既存の `explanation` および `translation` カラムを削除。
+- **(追記)** 既存の `frontAudioUrl` および `backAudioUrl` カラムを削除。音声情報も `AICardContent` で管理するため。
+- `AICardContent` モデルとの 1 対多リレーションを設定 (`aiContents AICardContent[]`)。
+
+### 2.3. `AiContentType` Enum の更新
+
+コンテンツの種類（解説、翻訳、**または音声**）を定義します。
+
+```prisma
+// (prisma/schema.prisma より抜粋)
+enum AiContentType {
+  EXPLANATION       // 解説テキスト
+  TRANSLATION       // 翻訳テキスト
+  AUDIO_PRIMARY     // Card.front (主要テキスト) の音声
+  AUDIO_SECONDARY   // Card.back (第2テキスト/答え) の音声
+  AUDIO_EXPLANATION // EXPLANATION コンテンツの音声
+  AUDIO_TRANSLATION // TRANSLATION コンテンツの音声
 }
 ```
 
-## File: app/page.tsx
-```typescript
-import Image from "next/image";
+**(追記)** 音声の種類を、それがどのテキスト（主要、第2、解説、翻訳）に対応するかを示す形で定義しました。これにより、多言語の音声にも対応できます。
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+### 2.4. AICardContent モデルの詳細
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+AI 生成コンテンツ（または音声ファイル情報）を格納する新しいモデルです。
+
+```prisma
+// (prisma/schema.prisma より抜粋)
+model AICardContent {
+  id            String        @id @default(cuid())
+  cardId        String        // どのカードか
+  card          Card          @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  contentType   AiContentType // ★ 更新された Enum を使用 ★
+  language      String        // コンテンツの言語 ('en', 'ja') または音声の言語 ('en-US', 'ja-JP')
+  content       String        @db.Text // テキスト本体、または音声ファイルの GCS パス/URL
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([cardId, contentType, language])
+  @@index([cardId])
+  @@index([cardId, contentType])
 }
+```
+
+**(追記)** `contentType` が `AUDIO_*` の場合、`content` フィールドには音声ファイルの GCS 上のパス (例: `tts-audio/uuid.mp3`) が格納されます。`language` フィールドにはその音声の言語コード (例: `en-US`) が入ります。
+
+## 3. 新しいスキーマ定義 (`prisma/schema.prisma` より抜粋)
+
+以下に、今回の変更に関連する主要なモデル (`Card`, `AICardContent`) と Enum (`AiContentType`) の定義を示します。完全なスキーマは `prisma/schema.prisma` を参照してください。
+
+```prisma
+// --- Enum 定義 ---
+enum AiContentType {
+  EXPLANATION       // 解説テキスト
+  TRANSLATION       // 翻訳テキスト
+  AUDIO_PRIMARY     // Card.front (主要テキスト) の音声
+  AUDIO_SECONDARY   // Card.back (第2テキスト/答え) の音声
+  AUDIO_EXPLANATION // EXPLANATION コンテンツの音声
+  AUDIO_TRANSLATION // TRANSLATION コンテンツの音声
+}
+
+// --- モデル定義 ---
+
+model Card {
+  id            String   @id @default(cuid())
+  front         String   @db.Text
+  back          String   @db.Text
+
+  // --- SRSメタデータ (変更なし) ---
+  interval      Int      @default(0)
+  easeFactor    Float    @default(2.5)
+  nextReviewAt  DateTime @default(now()) @db.Timestamptz
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // --- リレーション (deck, studyLogs は変更なし) ---
+  deckId        String
+  deck          Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  studyLogs     StudyLog[]
+
+  // ↓↓↓ AICardContent へのリレーションを【追加】↓↓↓
+  aiContents    AICardContent[]
+
+  // --- インデックス (変更なし) ---
+  @@index([deckId])
+  @@index([nextReviewAt])
+}
+
+model AICardContent {
+  id            String   @id @default(cuid())
+  cardId        String   // どのカードのコンテンツか (Cardへの参照)
+  card          Card     @relation(fields: [cardId], references: [id], onDelete: Cascade) // Cardとのリレーション
+  contentType   AiContentType // Enum: EXPLANATION, TRANSLATION, AUDIO_*
+  language      String   // コンテンツの言語コード (e.g., 'en', 'ja', 'en-US', 'ja-JP')
+  content       String   @db.Text // テキスト本体、または音声ファイルの GCS パス
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 同じカードに同じ種類・同じ言語のコンテンツは原則1つ
+  @@unique([cardId, contentType, language])
+  @@index([cardId]) // カードIDでの検索用
+  @@index([cardId, contentType]) // 特定タイプのコンテンツ取得用
+}
+
+// (User, Deck, StudyLog モデルは変更なしのため省略)
+```
+
+### 3.1. リレーション図 (Mermaid 形式 - 更新版)
+
+```mermaid
+erDiagram
+    User ||--o{ Deck : owns
+    User ||--o{ StudyLog : records
+    Deck ||--o{ Card : contains
+    Card ||--o{ AICardContent : has
+    Card ||--o{ StudyLog : relates_to
+
+    User {
+        String id PK "UUID"
+        String email Unique nullable
+        String name nullable
+        String avatarUrl nullable
+        DateTime createdAt
+        DateTime updatedAt
+    }
+
+    Deck {
+        String id PK "CUID"
+        String name
+        String description nullable
+        String userId FK "UUID"
+        DateTime createdAt
+        DateTime updatedAt
+    }
+
+    Card {
+        String id PK "CUID"
+        String front Text
+        String back Text
+        String deckId FK "CUID"
+        Int interval
+        Float easeFactor
+        DateTime nextReviewAt Timestamptz
+        DateTime createdAt
+        DateTime updatedAt
+        # aiContents AICardContent[] (Relation)
+    }
+
+    AICardContent {
+        String id PK "CUID"
+        String cardId FK "CUID"
+        AiContentType contentType "Enum"
+        String language "e.g., en, ja, en-US"
+        String content Text "Text or GCS Path"
+        DateTime createdAt
+        DateTime updatedAt
+    }
+
+    StudyLog {
+        String id PK "CUID"
+        DateTime reviewedAt
+        StudyRating rating "Enum"
+        Int previousInterval
+        Float previousEaseFactor
+        Int newInterval
+        Float newEaseFactor
+        DateTime nextReviewAt
+        String userId FK "UUID"
+        String cardId FK "CUID"
+    }
+
+    enum AiContentType {
+        EXPLANATION
+        TRANSLATION
+        AUDIO_PRIMARY
+        AUDIO_SECONDARY
+        AUDIO_EXPLANATION
+        AUDIO_TRANSLATION
+    }
+
+    enum StudyRating {
+        AGAIN
+        HARD
+        GOOD
+        EASY
+    }
+```
+
+## 4. 採用理由
+
+- **多言語対応の実現:** 1つのカードに対し、複数言語の解説・翻訳・**音声**を `language` フィールドで区別して格納できる。
+- **コンテンツ種類の拡張性:** 将来的に「難易度別解説」や「例文」など、新しい種類の AI コンテンツを追加する場合、`AiContentType` Enum を拡張するだけで対応可能。
+- **`Card` モデルの関心の分離:** カードのコア情報（表裏、SRS データ）と、付加的な AI 生成コンテンツ（テキスト、音声パス）を分離できる。
+- **ユーザーの多様な学習スタイルへの対応:** 「英語の解説」と「日本語の翻訳」を同時に取得・表示したり、複数の言語の音声を選択したりするなど、柔軟な情報提示が可能になる。
+- **音声データ管理の統合:** テキストコンテンツと音声ファイルの参照情報を同じテーブルで管理することで、データの一貫性を保ちやすくなる。
+
+## 5. パフォーマンスに関する考慮事項
+
+`Card` データと一緒に `AICardContent` を取得する際には、Prisma の `include` 機能を使用します。関連するテーブルアクセスが増える可能性はありますが、以下の対策によりパフォーマンスへの影響は最小限に抑えられる見込みです。
+
+- `AICardContent` テーブルに適切なインデックス（`cardId`, `contentType`, `language` など）を設定する。
+- フロントエンドで不要なコンテンツまで取得しないように、必要な `contentType` や `language` でフィルタリングする（例: ユーザー設定に基づいて表示する言語を選択）。
+
+これらの対策により、UX に影響が出るほどの顕著なパフォーマンス低下は通常発生しないと考えられます。
+
+## 6. 影響範囲 (概要)
+
+このデータベース設計変更は、アプリケーションの以下の部分に影響を与えます。
+
+- **Prisma スキーマ:** 上記の通り変更し、マイグレーションを実行する必要があります。
+- **サービス層 (`card.service.ts`, `ai.service.ts` など):** AI コンテンツの保存ロジック（`prisma.aICardContent.create` を使用）および取得ロジック（`include: { aiContents: true }` など）の修正が必要です。**音声ファイルの GCS パス保存ロジックもここに含まれます。**
+- **API レスポンスと型定義 (`types/api.types.ts`):** カードデータの型定義から `explanation`, `translation`, **`frontAudioUrl`, `backAudioUrl`** を削除し、代わりに `aiContents` 配列を含むように修正が必要です。`AICardContent` の型定義も更新が必要です。
+- **フロントエンド:** カードデータを表示するコンポーネント (`CardList` など) や、AI コンテンツを利用する機能（解説表示、翻訳表示、**音声再生**など）の修正が必要です。データ構造の変更に対応する必要があります。**音声再生は `AICardContent` から GCS パスを取得し、署名付き URL を取得して再生するフローになります。**
+````
+
+## File: error-handling.md
+
+````markdown
+# Error Handling Strategy v1.1
+
+**(更新日: 2025-04-29)**
+
+## 1. 目的 (変更なし)
+
+アプリケーション全体で一貫性があり、予測可能で、デバッグしやすく、ユーザーにとっても分かりやすいエラーハンドリングを実現します。
+
+## 2. 基本原則 (変更なし)
+
+- **早期失敗:** 問題が発生したら、可能な限り早い段階で検知し、処理を中断します（ただし、ユーザー操作を不必要に妨げない範囲で）。
+- **ログへのコンテキスト付与:** エラーログには、原因調査に必要な情報（リクエストID、ユーザーID、発生箇所、エラー詳細など）を含めます。
+- **機密情報の非漏洩:** ユーザー向けの エラーメッセージには、システム内部の情報やスタックトレースなどの機密情報を含めません。
+- **エラーレスポンスの標準化:** API が返すエラーレスポンスの形式を統一します。
+
+## 3. カスタムエラークラス (`src/lib/errors.ts`) (変更なし)
+
+アプリケーション固有のエラー状況を示すために、`Error` を継承したカスタムエラークラスを定義します。
+
+- **ベースクラス (`AppError`):**
+  - `statusCode` (HTTP status), `errorCode` (machine-readable string like `NOT_FOUND`), and optional `details` を持ちます。
+- **具象クラス (例):**
+  - `ValidationError` (400, `VALIDATION_ERROR`)
+  - `AuthenticationError` (401, `AUTHENTICATION_FAILED`)
+  - `PermissionError` (403, `PERMISSION_DENIED`)
+  - `NotFoundError` (404, `RESOURCE_NOT_FOUND`)
+  - `ConflictError` (409, `RESOURCE_CONFLICT`)
+  - `ExternalApiError` (503, `EXTERNAL_API_FAILURE`)
+  - `DatabaseError` (500, `DATABASE_ERROR`)
+- **`isAppError`**: Type guard function.
+
+## 4. エラーハンドリング: レイヤー別 (修正・統合)
+
+### 4.1. Service Layer (`src/services/`)
+
+- **General Guideline:** Services should handle expected operational errors (e.g., resource not found, validation failure, external API failure, DB constraint violation) and communicate them clearly to the caller (API layer). Unexpected errors (e.g., programming bugs, infrastructure issues) might still result in uncaught exceptions but should be minimized.
+- **Two Patterns Used:**
+
+  1.  **Returning `Result<T, AppError>` (Preferred for Mutations/Complex Logic):**
+      - **Used In:** `deck.service::updateDeck`, `card.service::saveAiContent`, `ai.service::generateExplanation`, `ai.service::generateTranslation`, `ai.service::generateTtsAudio`.
+      - **Why:** This pattern makes success and failure explicit in the return type. It forces the caller (API layer or potentially RSCs) to actively check the outcome using `if (result.ok)`. This is generally preferred for operations that modify data or involve external calls where failure is common and needs specific handling. It also aligns better with potential future direct usage from React Server Components (RSCs), as throwing errors directly from RSC data fetching can be problematic. It also aligns conceptually with error handling in languages like Go or Rust.
+      - **Implementation:** Functions return `Promise<Result<SuccessType, AppError>>`. On success, return `{ ok: true, value: ... }`. On failure, create an appropriate `AppError` subclass (e.g., `NotFoundError`, `ConflictError`, `ExternalApiError`) and return `{ ok: false, error: ... }`. Internal `try...catch` blocks are used to catch errors (e.g., from Prisma or external APIs) and convert them into the error part of the `Result`. (See Section 5 for limited `try...catch` usage).
+  2.  **Throwing `AppError` (Used for Getters/Deletes):**
+      - **Used In:** `deck.service::getDeckById`, `deck.service::deleteDeck`, `card.service::getCardsByDeckId` (throws `DatabaseError`), `card.service::deleteCard`.
+      - **Why:** For simpler "get" operations or delete operations where the primary expected error is "Not Found" (or a general DB error), directly throwing a specific `AppError` (like `NotFoundError` or `DatabaseError`) can be slightly more concise. The API layer's `handleApiError` is designed to catch these.
+      - **Implementation:** Use `prisma.findUniqueOrThrow` or perform checks and `throw new NotFoundError(...)` etc. Use `try...catch` for unexpected database errors and `throw new DatabaseError(...)`. (See Section 5 for limited `try...catch` usage).
+
+- **Decision Rationale (Result vs. Throw in Services):**
+  - While initially some services used `throw` more broadly, the decision was made to adopt the `Result` pattern more consistently, especially for AI service calls and update operations. This was based on:
+    - Desire for more explicit error handling paths.
+    - Better alignment with potential future direct usage from RSCs.
+    - Consistency with error handling idioms in languages like Go/Rust (a potential future direction mentioned by the user).
+    - Existing use in `updateCard`/`updateDeck`.
+  - Getters and Deletes remain using `throw` primarily for simplicity where `NotFoundError` is the main expected failure path, which `handleApiError` correctly translates to a 404 response.
+
+### 4.2. API Route Handlers (`src/app/(api)/...`)
+
+- **Centralized Handling:** All API route handlers (`GET`, `POST`, `PUT`, `DELETE`) wrap their main logic in a `try...catch` block at the top level. (See Section 5 for limited `try...catch` usage for specific operations like JSON parsing).
+- **`handleApiError` Utility:** The `catch` block (and logic checking failed `Result` objects from services) **must** pass the caught error or the `error` from the `Result` object to the `handleApiError(error)` function located in `lib/errors.ts`.
+- **Functionality:** `handleApiError` inspects the type of the error (`instanceof NotFoundError`, etc.) and returns a standardized `NextResponse` object with the appropriate HTTP status code (400, 401, 403, 404, 409, 500, 503) and a JSON body (`{ error: string, message: string, details?: unknown }`). This ensures consistent error responses across the entire API.
+- **予期せぬ `Error` を catch した場合:**
+  - **完全なエラー情報（スタックトレース含む）をログに記録します。**
+  - クライアントには**汎用的な 500 エラーレスポンス**を返します: `{ "error": "INTERNAL_SERVER_ERROR", "message": "サーバー内部で予期せぬエラーが発生しました。" }`。**内部エラーの詳細はクライアントに漏洩させません。**
+
+### 4.3. Frontend (Client Components / Hooks)
+
+- **React Query:** API calls are primarily made using React Query hooks (`useQuery`, `useMutation` like `useDecks`, `useGenerateTts`, `useSaveAiContent`).
+- **Error Handling:** These hooks expose `error`, `isError` states. Components should use these states to display appropriate error messages or UI feedback to the user. The `error` object received will typically be the `AppError` instance (or a generic error for network issues) constructed by the `apiClient` or returned by the API layer's error handler, containing the `message`, `errorCode`, `statusCode`, and potentially `details`. Callbacks like `onError` in `useMutation` options are used for side effects like showing toasts or alerts.
+- **ユーザーへの表示:** エラーの種類に応じて、ユーザーに分かりやすいエラーメッセージを表示します（i18n 利用）。Toast 通知やフォームのインラインメッセージなどを使い分けます。
+- **Error Boundary:** React の **Error Boundary** を利用して、レンダリング中の予期せぬエラーでアプリ全体がクラッシュするのを防ぎます。
+
+## 5. `try...catch` の限定的な使用方針 (Next.js サーバーサイド) (変更なし、旧セクション4を移動)
+
+**背景:**
+
+Next.js のサーバーサイドコンテキスト (RSC, API Routes, Server Actions) では、フレームワークが内部的に `throw` を利用するケースがあります (例: `Suspense` のための Promise、`next/navigation` の `notFound()` や `redirect()`)。Next.js 公式ドキュメント (Learn Ch.13 Handling Errors) でも、`redirect()` が `try...catch` で捕捉される可能性について言及されています。
+
+そのため、関数全体を囲むような広範囲な `try...catch` は、これらのフレームワークの挙動を意図せず妨げてしまうリスクがあり、原則として避けるべきです。
+
+**基本方針:**
+
+- トップレベルや広範囲な `try...catch` は使用しない (API Route Handler の最上位を除く)。
+- エラーハンドリングは、可能な限り Result 型 (`{ ok: true, value: T } | { ok: false, error: E }`) や、事前のチェック (バリデーション、権限確認など) でエラー条件を判定し、早期リターン (`return { ok: false, error: ... }`) やカスタムエラー (`AppError` のサブクラス) の `throw` で行うことを基本とする。
+
+**限定的な `try...catch` の使用:**
+
+ただし、以下の特定のケースでは、Next.js 公式ドキュメントでも示唆されているように、**範囲を限定した `try...catch`** を使用することが現実的かつ推奨されます。
+
+1.  **データベース操作 (Service 層):**
+
+    - **対象:** `prisma.create()`, `prisma.update()`, `prisma.delete()` など。
+    - **理由:** データベース接続エラー、予期せぬ制約違反、タイムアウトなど、事前に完全に予測・回避することが困難なランタイムエラーが発生する可能性があるため。
+    - **目的:** これらの予期せぬ Prisma/DB エラーを捕捉し、ログに記録した上で、制御可能なカスタムエラー (例: `DatabaseError`) に変換して `Result` 型 (`{ ok: false, error: new DatabaseError(...) }`) として返すか、あるいは `throw new DatabaseError(...)` するため。
+    - **例 (`services/card.service.ts` の `updateCard` 内):**
+      ```typescript
+      try {
+        const updatedCard = await prisma.card.update({ ... });
+        return { ok: true, value: updatedCard };
+      } catch (error) {
+        console.error('Database error during card update:', error);
+        return { ok: false, error: new DatabaseError('Failed to update card.', error instanceof Error ? error : undefined) };
+      }
+      ```
+
+2.  **リクエストボディの JSON パース (API Route Handler):**
+    - **対象:** `await request.json()` の呼び出し。
+    - **理由:** クライアントから送信されるリクエストボディが不正な JSON 形式である可能性は常にあり、これは実行時にパースエラー (`SyntaxError`) として `throw` されるため。
+    - **目的:** パースエラーを捕捉し、サーバーが 500 エラーでクラッシュするのを防ぎ、クライアントに適切な 400 Bad Request (`ValidationError`) を返すため。
+    - **例 (`app/.../route.ts` 内):**
+      ```typescript
+      let body;
+      try {
+        body = await request.json();
+      } catch (e) {
+        return handleApiError(new ValidationError('Invalid JSON body.')); // または直接 NextResponse を返す
+      }
+      // body を使った処理...
+      ```
+
+**結論:**
+
+`try...catch` を完全に排除するのではなく、**「フレームワークの邪魔をせず、かつ、避けられないランタイムエラーを適切に処理する」** というバランスを取るために、データベース操作や JSON パースなど、**限定的かつ具体的な箇所**でのみ `try...catch` を使用する方針とします。それ以外のエラーハンドリングは Result 型や事前チェックを基本とします。
+
+## 6. ログ記録 (変更なし、旧セクション7)
+
+- API Routes で捕捉した全てのエラー（特に 500 系）は、**Google Cloud Logging** に記録します。
+- リクエストID、ユーザーID（可能な場合）、エラーコード、メッセージ、スタックトレースなど、デバッグに必要なコンテキストを含めます。
+- ログレベル（INFO, WARN, ERROR）を適切に使い分けます。
+
+## 7. 監視 (変更なし、旧セクション8)
+
+- **Google Cloud Monitoring** や **Error Reporting** を使用して、エラー率（特に 5xx）のスパイクや特定のエラーコードの頻発を監視し、アラートを設定します。
+````
+
+## File: feature-deck-details.md
+
+````markdown
+# Plan: Deck Detail Page Feature (v1.1 - AICardContent Reflected)
+
+**(Updated: 2025-04-25)**
+
+This document outlines the updated plan for implementing the Deck Detail Page feature, reflecting the database changes (introduction of `AICardContent`) and revising the data fetching strategy for better separation of concerns.
+
+## Phase 1: Backend Data Fetching Logic (Revised)
+
+The responsibility for fetching the core deck information and the list of cards within that deck will be clearly separated between the deck service/API and the card service/API.
+
+1.  **Deck Information (`deck.service.ts`, `GET /api/decks/[deckId]`)**:
+
+    - The `deck.service.ts` function `getDeckById(userId: string, deckId: string)` will be responsible for fetching **only the core deck information** (e.g., `id`, `name`, `description`, `createdAt`, `updatedAt`).
+    - It should **not** use `include` to fetch the associated `cards`. The primary purpose is to verify existence and ownership, and return deck metadata.
+    - The corresponding API endpoint `GET /api/decks/[deckId]` will reflect this, returning **only the deck's data** in the response body upon success. Authentication (`getServerUserId`) and authorization (checking ownership via `userId` in the service) remain crucial. `NotFoundError` and `PermissionError` should be handled appropriately.
+
+2.  **Card List Information (`card.service.ts`, `GET /api/decks/[deckId]/cards`)**:
+    - The `card.service.ts` function `getCardsByDeckId(userId: string, deckId: string, options: { limit, offset })` remains responsible for fetching the **paginated list of cards** belonging to the specified `deckId`. It must still verify user ownership of the deck before fetching cards.
+    - **[CRITICAL UPDATE]** This service function **must be updated** to use Prisma's `include` option to fetch the associated `aiContents` (from the `AICardContent` table) for each card. This allows the API to return the necessary explanation and translation data linked to each card.
+      ```typescript
+      // Example modification within card.service.ts getCardsByDeckId
+      // Ensure the Prisma query includes aiContents
+      const [cards, totalItems] = await prisma.$transaction([
+        prisma.card.findMany({
+          where: { deckId: deckId }, // Deck ownership already verified
+          orderBy: { createdAt: 'asc' },
+          skip: validatedOffset,
+          take: validatedLimit,
+          include: {
+            // ★ Include associated AICardContent records ★
+            aiContents: {
+              // Optionally select specific fields from AICardContent
+              select: {
+                id: true,
+                contentType: true,
+                language: true,
+                content: true,
+                // createdAt: true, // Include if needed
+                // updatedAt: true, // Include if needed
+              },
+            },
+          },
+        }),
+        prisma.card.count({ where: { deckId: deckId } }),
+      ]);
+      ```
+    - The corresponding API endpoint `GET /api/decks/[deckId]/cards` will handle pagination parameters (`limit`, `offset`) and return the paginated list of cards. Each card object in the response should now include the `aiContents` array, structured as defined in the updated `api-design.md` (v1.2).
+
+## Phase 2: Frontend Page Implementation (Revised)
+
+The Deck Detail Page (`/decks/[deckId]`) will utilize a combination of Server Components (for initial static data) and Client Components (for dynamic, interactive parts like the card list).
+
+1.  **Page Component (`src/app/[locale]/(app)/(main)/decks/[deckId]/page.tsx`)**:
+
+    - This component should preferably be a **React Server Component (RSC)** to fetch initial deck data efficiently on the server.
+    - It fetches **only the core deck data** (name, description) directly using the `deck.service.ts::getDeckById` function within the RSC, or by making a server-side `Workspace` call to `GET /api/decks/[deckId]`.
+    - It handles loading states and potential errors (like `NotFoundError` or `PermissionError` for the deck itself) during server-side rendering.
+    - It **renders the `CardList` component** (which is a Client Component), passing the necessary `deckId` as a prop.
+    - It **does not** fetch or render the list of cards directly. This responsibility is delegated to `CardList`.
+    - It likely also renders the `CardCreateForm` component.
+
+2.  **Card List Component (`src/components/features/CardList.tsx`)**:
+    - This **must be a Client Component** (`'use client'`) because it needs state, lifecycle effects, data fetching hooks, and interactivity.
+    - It receives the `deckId` as a prop from the parent Page Component.
+    - It uses the **`useCards` custom hook** (defined in `src/hooks/useCards.ts`) to fetch the paginated list of cards. This hook internally makes requests to the `GET /api/decks/[deckId]/cards` endpoint.
+    - The `useCards` hook (and consequently the `CardList` component) will now receive card data that includes the `aiContents` array for each card.
+    - It manages its own loading and error states related to fetching the card list.
+    - It renders the list of cards, displaying `front`, `back`, and potentially information derived from the `aiContents` (e.g., showing icons indicating available explanations/translations, or allowing the user to view specific content based on language/type).
+    - It implements pagination controls which modify the `offset` state used by the `useCards` hook, triggering refetches for different pages.
+    - It contains the Edit/Delete buttons for each card, triggering respective mutations (which might also reside in client-side hooks).
+
+## Data Flow Diagram (Revised)
+
+This diagram illustrates the updated data flow with separated concerns.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Page as DeckDetailPage <br> (RSC - page.tsx)
+    participant DeckService as deck.service.ts <br> (Server-side)
+    participant CardListComp as CardList <br> (Client Comp)
+    participant CardsHook as useCards <br> (Client Hook)
+    participant CardsAPI as GET /api/decks/[deckId]/cards <br> (API Route)
+    participant CardService as card.service.ts <br> (Server-side)
+    participant DB as Prisma/Database
+
+    User->>Page: Navigates to /decks/[deckId]
+    Page->>DeckService: Calls getDeckById(userId, deckId) [Server-side fetch]
+    DeckService->>DB: prisma.deck.findUnique(...)
+    DB-->>DeckService: Returns deck data (or error)
+    alt Deck Found
+        DeckService-->>Page: Returns deck data
+        Page->>User: Renders deck name, description etc.
+        Page->>CardListComp: Renders CardList component (passes deckId)
+        CardListComp->>CardsHook: Calls useCards(deckId, {limit, offset})
+        CardsHook->>CardsAPI: Fetch cards (page 1)
+        CardsAPI->>CardService: Calls getCardsByDeckId(..., include: {aiContents})
+        CardService->>DB: prisma.card.findMany({ include: {aiContents}}) & count
+        DB-->>CardService: Returns cards with aiContents & total
+        CardService-->>CardsAPI: Returns paginated data
+        CardsAPI-->>CardsHook: Returns JSON response (200 OK)
+        CardsHook-->>CardListComp: Provides card data & pagination
+        CardListComp->>User: Renders card list & pagination controls
+    else Deck Not Found/Forbidden (Server-side)
+        DeckService-->>Page: Throws Error / Returns null
+        Page->>User: Renders 'Deck not found' or redirects
+    end
+    User->>CardListComp: Clicks 'Next Page'
+    CardListComp->>CardsHook: Updates offset state, triggers refetch
+    CardsHook->>CardsAPI: Fetch cards (page 2)
+    CardsAPI->>CardService: Calls getCardsByDeckId(...)
+    CardService->>DB: Fetches next page of cards
+    DB-->>CardService: Returns cards
+    CardService-->>CardsAPI: Returns data
+    CardsAPI-->>CardsHook: Returns JSON response
+    CardsHook-->>CardListComp: Provides updated card data
+    CardListComp->>User: Renders next page of cards
+```
+````
+
+## File: functional-requirements.md
+
+```markdown
+# 機能要件定義 v1.1 (2025-04-22)
+
+## 1. 概要
+
+AI を活用した多言語対応の単語帳（フラッシュカード）Web アプリケーション。ユーザーはデッキを作成し、単語や例文を登録・学習できる。将来的にはモバイルアプリ（React Native）展開も視野に入れる。
+**★ アーキテクチャ補足:** バックエンド API は UI の表示言語から独立させ、`/api/...` 形式の固定パスで提供する。
+
+## 2. MVP (Minimum Viable Product) スコープ
+
+### 2.1. ユーザー認証・管理 (基本)
+
+#### 2.1.1. ユーザー登録/ログイン
+
+- メールアドレスとパスワードによるサインアップ・ログイン機能。
+- **登録時入力:** ユーザー名(必須※), Email(必須), Password(必須)。
+- **技術:** Supabase Auth。`auth.users` と `public.User` の同期トリガー設定済。
+
+#### 2.1.2. パスワード再設定
+
+- パスワード忘れユーザー向け再設定フロー。(メール送信、新パスワード設定)
+- **技術:** Supabase Auth。**実装予定**。
+
+#### 2.1.3. パスワード変更
+
+- ログイン中ユーザー向けパスワード変更機能 (設定画面)。
+- **技術:** Supabase Auth。**実装予定**。
+
+#### 2.1.4. アカウント削除
+
+- ログイン中ユーザーのアカウント削除機能 (設定画面)。
+- 関連データカスケード削除。
+- **技術:** Service/API は**実装予定**。
+
+### 2.2. デッキ管理 (基本 CRUD)
+
+#### 2.2.1. デッキ作成
+
+- 新規デッキ作成。
+- **入力:** デッキ名 (必須, ユーザー毎ユニーク), 説明 (任意)。
+- **実装状況:** UI, Hook, API (`POST /api/decks`), Service **実装済・動作確認済**。★ API パスを `/api/decks` に修正済 (要コード反映) ★
+
+#### 2.2.2. デッキ一覧表示
+
+- ログインユーザーのデッキ一覧表示。
+- **表示項目:** デッキ名、説明(任意)など。
+- **実装状況:** UI, Hook, API (`GET /api/decks`), Service **実装済・動作確認済**。★ API パスを `/api/decks` に修正済 (要コード反映) ★
+
+#### 2.2.3. デッキ削除
+
+- 自身のデッキを削除。確認ダイアログ表示。
+- **実装状況:** UI (確認ダイアログ連携含む), Hook, API (`DELETE /api/decks/[deckId]`), Service **実装済・動作確認済**。★ API パスを `/api/decks/[deckId]` に修正済 (要コード反映) ★
+
+### 2.3. 単語・カード管理 (基本 CRUD)
+
+#### 2.3.1. カード追加
+
+- 特定デッキ内にカード追加 (デッキ詳細ページ)。
+- **入力:** 表面テキスト (必須), 裏面テキスト (必須)。
+- **実装状況:** UI, Hook, API (`POST /api/decks/[deckId]/cards`), Service **実装済・動作確認済**。★ API パスを `/api/decks/[deckId]/cards` に修正済 (要コード反映) ★
+
+#### 2.3.2. カード一覧表示
+
+- 特定デッキ内のカード一覧表示 (デッキ詳細ページ)。
+- **表示項目:** 表面・裏面テキストなど。
+- **実装状況:** UI (`CardList`), Hook (`useCards`), API (`GET /api/decks/[deckId]/cards`), Service **実装済・動作確認済**。★ API パスを `/api/decks/[deckId]/cards` に修正済 (要コード反映) ★
+
+#### 2.3.3. カード編集
+
+- カードの表面・裏面テキスト編集。
+- **実装状況:** バックエンド (API `PUT /api/decks/[deckId]/cards/[cardId]`, Service - Resultパターン) は**実装済**。フロントエンド (Hook `useUpdateCard`, 編集UI) は**未実装**。★ API パスを `/api/decks/[deckId]/cards/[cardId]` に修正済 (要コード反映) ★
+
+#### 2.3.4. カード削除
+
+- デッキからカードを削除。確認ダイアログ表示。
+- **実装状況:** バックエンド (API `DELETE /api/decks/[deckId]/cards/[cardId]`, Service)、フック (`useDeleteCard`)、UI **実装済・動作確認済**。★ API パスを `/api/decks/[deckId]/cards/[cardId]` に修正済 (要コード反映) ★
+
+### 2.4. AI 連携 (基本)
+
+- カード追加/更新時にテキストから自動生成・保存機能を**将来実装予定**。
+  - 自動音声生成 (GCP TTS)
+  - 自動解説生成 (GCP Vertex AI Gemini)
+  - 自動翻訳生成 (GCP Vertex AI Gemini)
+- 保存先は `Card` モデルの関連フィールド。
+
+### 2.5. 学習・復習機能 (基本)
+
+- 以下の機能を**将来実装予定**。
+  - フラッシュカード表示 (表裏反転、音声再生)
+  - 評価ボタン
+  - SRSアルゴリズム (`lib/srs.ts`) による更新
+  - 復習セッション (対象カード抽出・表示)
+
+### 2.6. ユーザーサポート (最低限)
+
+- 問い合わせフォーム設置は **MVP 後の検討事項**。
+
+## 3. 将来的な拡張機能 (優先度 低 / 参考)
+
+- ユーザープロファイル機能の拡充
+- データインポート/エクスポート機能
+- 検索機能
+- 学習統計・可視化機能
+- カード入力のリッチテキスト対応
+- 通知機能
+- デッキ共有機能
+
+---
+```
+
+## File: non-functional-requirements.md
+
+```markdown
+# 非機能要件 v1.1 (2025-04-22)
+
+このドキュメントは、アプリケーションの品質特性に関する要件と方針を定義します。
+
+## 1. パフォーマンス
+
+- **目標:** ユーザーがストレスなく利用できる応答速度。
+- **指標:** Core Web Vitals「良好」、主要操作 < 1s、通常 API < 500ms (P95)。AI コンテンツ取得 < 500ms。
+- **対策:** DB インデックス、React Query キャッシュ、AI 結果キャッシュ、Next.js レンダリング最適化、Cloud Run スケール。
+
+## 2. スケーラビリティ
+
+- **目標 (MVP/初期):** ピーク時同時接続ユーザー数 千人規模 (`~5,000`)。
+- **目標 (将来):** 常時接続 100 万人超 (※大幅なアーキテクチャ変更前提)。
+- **構成:** Cloud Run, Supabase PostgreSQL, GCP AI/GCS。
+- **対策:** DB接続 Pooler URL + `?pgbouncer=true&connection_limit=1`。将来的に DB スケーリング等を検討。
+
+## 3. セキュリティ
+
+- **認証:** Supabase Auth (Email/Password, JWT Cookie)。
+- **認可:** **Supabase RLS** 必須。Service 層でも所有権チェック。
+- **入力検証:** Zod (`lib/zod.ts`) を用い、API Routes で検証。
+- **API 保護:** レート制限は将来検討。要認証 API は `getServerUserId` で確認。
+- **機密情報管理:** `.env.local`, Google Secret Manager + Cloud Run 環境変数。
+- **依存関係:** 定期的な脆弱性チェック・アップデート。
+
+## 4. 信頼性・可用性
+
+- **目標:** 稼働率 99.5% 〜 99.9%。
+- **エラーハンドリング:** カスタム `AppError` (`lib/errors.ts`)。API で標準化されたエラーレスポンス (`docs/error-handling.md`)。カード更新のみ `Result` パターン試行済。
+- **監視:** Google Cloud Monitoring/Logging/Error Reporting 活用。アラート設定。
+- **バックアップ・リカバリ:** Supabase 自動バックアップ、GCS バージョニング検討、CI/CD ロールバック手順。
+- **冗長性:** クラウドサービスのリージョン内冗長性活用。
+
+## 5. 保守性
+
+- **コード品質:** ESLint/Prettier 強制。TypeScript `strict`。Clean Code (`docs/coding-style.md`)。
+- **テスト:** ユニット/結合/E2E。CI で自動実行 (`docs/testing-strategy.md`)。コアロジックのカバレッジ重視。
+- **ドキュメンテーション:** `README.md`, `docs/` ディレクトリ、JSDoc。
+- **ディレクトリ構造:** レイヤー分離、関心事分離。**★ API ルートは `src/app/(api)/api/...` に配置し、UI ルーティング (`src/app/[locale]/...`) から分離。**
+- **依存関係:** 定期的な管理。
+- **CI/CD:** GitHub Actions で自動化。
+
+## 6. 国際化 (i18n)
+
+- **ライブラリ:** `next-intl`。
+- **ルーティング:** パスベース。**★ UI ページのみ `app/[locale]/...` を使用。** デフォルトロケール `en` はプレフィックスなし。`ja` は `/ja` 付き。
+- **API:** API ルート (`/api/...`) はロケールプレフィックスを**含まない**。API レスポンスの言語は、必要なら `Accept-Language` ヘッダーで判定 (現状未実装)。
+- **実装:** `middleware.ts` (`api` 除外 matcher)、`NextIntlClientProvider`, `useTranslations` 等。
+
+## 7. アクセシビリティ (a11y)
+
+- WCAG を意識し、可能な範囲で配慮する (努力目標)。
+
+## 8. その他開発関連
+
+- **実行環境 (開発):** **`bun run dev`** を使用。
+- **UI ライブラリ:** Tamagui 導入済みだが、React 19/Next.js 15 との互換性問題発生中。主要箇所で標準 HTML + Tailwind に代替中。根本解決はバージョンダウン等を検討。
+
+---
+```
+
+## File: testing-strategy.md
+
+```markdown
+# テスト戦略
+
+## 1. 目的
+
+本アプリケーションの品質を確保し、継続的な改善と安定した運用を可能にするため、以下のテスト戦略を定義します。
+
+- バグの早期発見と修正コストの低減
+- リグレッション（機能低下）の防止
+- 安全なリファクタリングの実現
+- 仕様のドキュメント化
+- デプロイへの信頼性向上
+
+## 2. 基本方針
+
+- **テストピラミッド/トロフィー:** ユニットテストを土台とし、結合テスト、E2E テストをバランス良く組み合わせます。
+- **振る舞いのテスト:** 実装の詳細ではなく、コードが外部から見てどのように振る舞うべきかをテストします。
+- **テストの品質:** テストは信頼性が高く（Flaky Test を避ける）、実行速度が速く、保守しやすい状態を保ちます。
+- **テストファイルの配置:** テスト対象のソースファイルと同じディレクトリに `*.test.ts` または `*.spec.ts` として配置します (Co-location)。
+
+## 3. テストの種類とツール
+
+- **ユニットテスト (Unit Tests):**
+  - **対象:** 個別の関数、フック、UI コンポーネントの表示ロジック、ユーティリティ (`lib`, `hooks`, `components/ui`, `services` のコアロジック)。
+  - **ツール:** Vitest (または Jest), React Testing Library (RTL)。
+  - **目的:** モジュール単体のロジック検証。依存関係はモック化。高速実行。カバレッジ目標の中心（例: `lib`/`services` で 70-80%）。
+- **結合テスト (Integration Tests):**
+  - **対象:** 複数モジュール間の連携。API ルートと Service 層の連携、Service 層と DB (テスト用 DB) の連携、UI コンポーネントとカスタムフック/API モックの連携など。
+  - **ツール:** Vitest (または Jest), RTL, Supertest (API Routes), Mock Service Worker (MSW), テスト用データベース。
+  - **目的:** モジュール間のインターフェースやデータフローの検証。
+- **E2E テスト (End-to-End Tests):**
+  - **対象:** 主要なユーザーストーリー（例: ログイン〜デッキ作成〜単語登録〜学習完了）。
+  - **ツール:** Playwright (推奨) または Cypress。
+  - **目的:** システム全体がユーザー視点で正しく動作することの最終確認。コストが高いため、クリティカルパスに限定して実施。
+
+## 4. テスト対象範囲
+
+- **バックエンド (`app/(api)`, `services`, `lib`):** ユニットテストと結合テストを重点的に実施。
+- **フロントエンド (`app/(app)`, `components`, `hooks`):** ユニットテスト (RTL) と結合テスト (RTL) を中心に。重要なフローは E2E でカバー。
+- **データベース:** Service 層の結合テストで検証。RLS ポリシーは手動確認または専用のテストスクリプトで検証。
+- **AI 連携:** 基本的に AI クライアントはモック化してテスト。必要であれば、AI サービス自体との疎通を確認するテストを別途用意（CI では頻繁に実行しない）。
+
+## 5. テスト実行
+
+- **ローカル:** 開発者が開発中に随時実行。
+- **CI/CD:** GitHub Actions で Push/PR をトリガーに自動実行。テスト失敗時はマージ/デプロイをブロック。
+
+## 6. テストデータ
+
+テストデータの準備・管理方法を定義する必要があります（例: ファクトリ関数、テストDB のシーディングスクリプト）。
+
+## 7. テストカバレッジ
+
+- CI でカバレッジレポートを生成・確認します。
+- カバレッジ率はテストされていない箇所を見つけるための**指標**とし、絶対的な品質基準とはしません。重要なロジックや複雑な分岐を網羅することを目指します。
 ```

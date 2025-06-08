@@ -8,7 +8,11 @@ interface DeckCreateModalProps {
   onSuccess?: () => void;
 }
 
-export function DeckCreateModal({ isOpen, onOpenChange, onSuccess }: DeckCreateModalProps) {
+export function DeckCreateModal({
+  isOpen,
+  onOpenChange,
+  onSuccess,
+}: DeckCreateModalProps) {
   const handleSuccess = () => {
     onOpenChange(false);
     if (onSuccess) {
@@ -38,13 +42,16 @@ export function DeckCreateModal({ isOpen, onOpenChange, onSuccess }: DeckCreateM
       <div
         className="relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-white dark:bg-gray-800 shadow-xl transform transition-all sm:my-8"
         onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
-       >
+      >
         <div className="p-6 space-y-4">
-          <h2 id="deck-create-modal-title" className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100">
+          <h2
+            id="deck-create-modal-title"
+            className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100"
+          >
             Create New Deck
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-             {/* ★★★ Fixed ' */}
+            {/* ★★★ Fixed ' */}
             Enter the name for your new deck. Click save when you&apos;re done.
           </p>
           <DeckCreateForm onSuccess={handleSuccess} />

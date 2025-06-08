@@ -8,14 +8,14 @@ import {
   type Card as PrismaCard,
   type AICardContent as PrismaAICardContent,
   type AiContentType,
-} from "../../node_modules/.prisma/client";
+} from '../../node_modules/.prisma/client';
 
 // Zod から Payload 型をインポート (変更なし)
 // Corrected import path from 'lib/zod' to '../lib/zod'
 import {
   type DeckCreatePayload as DeckCreatePayloadFromZod,
   type DeckUpdatePayload as DeckUpdatePayloadFromZod,
-} from "../lib/zod";
+} from '../lib/zod';
 
 /**
  * Payload for creating a new deck (POST /api/decks).
@@ -34,7 +34,7 @@ export type DeckUpdatePayload = DeckUpdatePayloadFromZod;
  */
 export type AICardContentApiResponse = Pick<
   PrismaAICardContent, // Use alias
-  "id" | "contentType" | "language" | "content" | "createdAt" | "updatedAt"
+  'id' | 'contentType' | 'language' | 'content' | 'createdAt' | 'updatedAt'
   // cardId は CardApiResponse にネストされるため通常は含めない
 >;
 // --- ↑↑↑ 新しい型定義ここまで ↑↑↑ ---
@@ -48,17 +48,16 @@ export type AICardContentApiResponse = Pick<
 export type CardApiResponse = Pick<
   PrismaCard, // Use alias
   // Card の基本フィールドを選択
-  | "id"
-  | "front"
-  | "back"
-  | "deckId"
-  | "createdAt"
-  | "updatedAt"
-  | "interval"
-  | "easeFactor"
-  | "nextReviewAt"
-  | "frontAudioUrl"
-  | "backAudioUrl"
+  | 'id'
+  | 'front'
+  | 'back'
+  | 'deckId'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'interval'
+  | 'easeFactor'
+  | 'nextReviewAt'
+
   // explanation, translation は削除された
 > & {
   // aiContents 配列を追加
@@ -73,12 +72,11 @@ export type CardApiResponse = Pick<
  * The list of cards for a deck should be fetched via the dedicated cards endpoint.
  */
 export type DeckApiResponse = Pick<
-  PrismaDeck, // Use alias
-  "id" | "name" | "description" | "createdAt" | "updatedAt" | "userId" // userId も API 設計に応じて含めるか検討
-  // 'cards' プロパティは削除
->;
-// --- ↑↑↑ DeckApiResponse 型修正ここまで ↑↑↑ ---
-
+  PrismaDeck,
+  'id' | 'name' | 'description' | 'createdAt' | 'updatedAt' | 'userId'
+> & {
+  cardCount?: number; // ★ Add this optional property ★
+};
 /**
  * Standard error response structure for API errors. (変更なし)
  */

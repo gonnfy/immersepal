@@ -1,7 +1,12 @@
 import { notFound } from 'next/navigation'; // Import notFound for 404 handling
 import { getServerUserId } from '@/lib/auth'; // Import function to get user ID
 import { getDeckById } from '@/services/deck.service'; // Import the service function
-import { NotFoundError, PermissionError, DatabaseError, isAppError } from '@/lib/errors';
+import {
+  NotFoundError,
+  PermissionError,
+  DatabaseError,
+  isAppError,
+} from '@/lib/errors';
 import { CardList } from '@/components/features/CardList'; // Import the CardList component
 import { CardCreateForm } from '@/components/features/CardCreateForm'; // Import the CardCreateForm component
 
@@ -16,16 +21,17 @@ type DeckData = {
   // 'cards' property is removed
 };
 
-
 interface DeckDetailPageProps {
   // Indicate that params might be a promise that needs resolving
-  params: Promise<{
-    deckId: string;
-    locale: string; // Locale might be needed for translations later
-  }> | {
-    deckId: string;
-    locale: string;
-  };
+  params:
+    | Promise<{
+        deckId: string;
+        locale: string; // Locale might be needed for translations later
+      }>
+    | {
+        deckId: string;
+        locale: string;
+      };
 }
 
 export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
@@ -47,7 +53,6 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
 
     // Fetch deck data (without cards)
     deck = await getDeckById(userId, deckId);
-
   } catch (error) {
     console.error('Error in DeckDetailPage:', error); // Log the error
 
@@ -57,39 +62,57 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
     } else if (error instanceof PermissionError) {
       errorInfo = { message: error.message, code: 'FORBIDDEN' };
     } else if (error instanceof DatabaseError) {
-      errorInfo = { message: 'A database error occurred while loading the deck.', code: 'DATABASE_ERROR' };
+      errorInfo = {
+        message: 'A database error occurred while loading the deck.',
+        code: 'DATABASE_ERROR',
+      };
     } else if (isAppError(error)) {
-       // Catch other AppErrors
-       errorInfo = { message: error.message, code: error.name };
-    }
-     else {
+      // Catch other AppErrors
+      errorInfo = { message: error.message, code: error.name };
+    } else {
       // Handle unexpected errors
-      errorInfo = { message: 'An unexpected error occurred.', code: 'INTERNAL_SERVER_ERROR' };
+      errorInfo = {
+        message: 'An unexpected error occurred.',
+        code: 'INTERNAL_SERVER_ERROR',
+      };
     }
   }
 
   // --- Render Error State ---
   if (errorInfo) {
-    return <div className="p-4 text-red-600">Error loading deck: {errorInfo.message} {errorInfo.code ? `(Code: ${errorInfo.code})` : ''}</div>;
+    return (
+      <div className="p-4 text-red-600">
+        Error loading deck: {errorInfo.message}{' '}
+        {errorInfo.code ? `(Code: ${errorInfo.code})` : ''}
+      </div>
+    );
   }
 
   // --- Render Success State ---
   // If we reach here and deck is still null, something went wrong (should be caught above)
   if (!deck) {
-     return <div className="p-4 text-red-600">Error loading deck: Deck data is unavailable.</div>;
+    return (
+      <div className="p-4 text-red-600">
+        Error loading deck: Deck data is unavailable.
+      </div>
+    );
   }
 
   return (
     <div className="container mx-auto p-4">
       {/* Deck Details */}
       <h1 className="text-3xl font-bold mb-2">{deck.name}</h1>
-      <p className="text-gray-600 mb-6">{deck.description || 'No description provided.'}</p>
+      <p className="text-gray-600 mb-6">
+        {deck.description || 'No description provided.'}
+      </p>
 
       {/* Separator or spacing */}
       <hr className="my-6" />
 
       {/* Add New Card Form (Client Component) */}
-      <div className="mb-8"> {/* Add some margin below the form */}
+      <div className="mb-8">
+        {' '}
+        {/* Add some margin below the form */}
         <h2 className="text-2xl font-semibold mb-4">Add New Card</h2>
         <CardCreateForm deckId={deck.id} />
       </div>

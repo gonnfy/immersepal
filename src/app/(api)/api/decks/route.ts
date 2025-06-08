@@ -1,114 +1,100 @@
-// src/app/(api)/api/decks/route.ts (isAppError, ValidationError 削除)
+// Refactored src/app/(api)/api/decks/route.ts
 
-import { NextResponse } from 'next/server';
-import { getServerUserId } from '@/lib/auth';
-import { deckCreateSchema, DeckCreatePayload } from '@/lib/zod';
-import { createDeck, getAllDecks } from '@/services/deck.service';
-// ★ isAppError, ValidationError を削除 ★ AppError は handleApiError で暗黙的に使われる可能性を考慮し一旦残す
-import { AppError, handleApiError, ERROR_CODES } from '@/lib/errors';
-import { z, ZodError } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerUserId } from '@/lib/auth'; // Auth helper
+import {
+  handleApiError,
+  ValidationError,
+  AuthenticationError,
+} from '@/lib/errors'; // Auth Error
+import { deckCreateSchema } from '@/lib/zod'; // Assuming Zod schemas exist
+import { getDecks, createDeck } from '@/services/deck.service'; // Import Deck services
+import { type DeckCreatePayload } from '@/types/api.types'; // Import payload type
 
 /**
- * 新しいデッキを作成する (POST)
+ * GET handler to fetch decks for the authenticated user.
  */
-export async function POST(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    // 1. Authentication: Get user ID or throw error
     const userId = await getServerUserId();
     if (!userId) {
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
+      throw new AuthenticationError(); // Throw specific error for handleApiError
     }
 
-    let body: DeckCreatePayload;
-    try {
-      body = await request.json();
-    } catch (_e) { // Removed unused eslint-disable comment
-      return NextResponse.json({ error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON format.' }, { status: 400 });
+    // 2. Get Pagination Params from URL
+    const { searchParams } = new URL(request.url);
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
+    const limit = parseInt(searchParams.get('limit') || '10', 10);
+
+    // Basic validation for pagination params
+    if (isNaN(offset) || offset < 0 || isNaN(limit) || limit < 1) {
+      throw new ValidationError('Invalid pagination parameters.');
     }
 
-    const validatedData = deckCreateSchema.parse(body);
-    const newDeck = await createDeck(userId, validatedData);
-    return NextResponse.json(newDeck, { status: 201 });
+    // 3. Call Service Function (passing userId)
+    // Service function now handles filtering by userId
+    const result = await getDecks(userId, { offset, limit }); // Pass userId
 
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return NextResponse.json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: 'Invalid input data.',
-        details: error.flatten().fieldErrors
-       }, { status: 400 });
+    // 4. Construct pagination links (example) - This ideally uses request URL
+    const baseUrl = request.nextUrl.pathname; // Base path e.g., /api/decks
+    result.pagination._links.self = `${baseUrl}?offset=${offset}&limit=${limit}`;
+    if (offset + limit < result.pagination.totalItems) {
+      result.pagination._links.next = `${baseUrl}?offset=${offset + limit}&limit=${limit}`;
     }
+    if (offset > 0) {
+      result.pagination._links.previous = `${baseUrl}?offset=${Math.max(0, offset - limit)}&limit=${limit}`;
+    }
+
+    // 5. Return Success Response
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    // Handle errors from auth, validation, or service
     return handleApiError(error);
   }
 }
 
 /**
- * ログインユーザーのデッキ一覧を取得する (GET - ページネーション対応版)
+ * POST handler to create a new deck for the authenticated user.
  */
-export async function GET(request: Request) {
+export async function POST(request: Request) {
   try {
+    // 1. Authentication: Get user ID or throw error
     const userId = await getServerUserId();
     if (!userId) {
-      return NextResponse.json({ error: ERROR_CODES.AUTHENTICATION_FAILED, message: 'Authentication required.' }, { status: 401 });
+      throw new AuthenticationError();
     }
 
-    const { searchParams } = new URL(request.url);
-
-    const querySchema = z.object({
-        limit: z.coerce.number().int().min(1).max(100).default(10),
-        offset: z.coerce.number().int().min(0).default(0),
-    });
-
-    let validatedQuery: { limit: number; offset: number };
+    // 2. Parse and Validate Request Body
+    let payload: DeckCreatePayload;
     try {
-      validatedQuery = querySchema.parse({
-        limit: searchParams.get('limit'),
-        offset: searchParams.get('offset'),
-      });
-    } catch (err) {
-       if (err instanceof ZodError) {
-         return NextResponse.json({
-           error: ERROR_CODES.VALIDATION_ERROR,
-           message: 'Invalid query parameters.',
-           details: err.flatten().fieldErrors,
-         }, { status: 400 });
-       }
-       // ★ AppError はここで new しているのでインポートが必要 ★
-       return handleApiError(new AppError('Failed to parse query parameters', 400, ERROR_CODES.VALIDATION_ERROR));
+      const rawBody: unknown = await request.json();
+      const validation = deckCreateSchema.safeParse(rawBody); // Use Zod schema
+      if (!validation.success) {
+        throw new ValidationError(
+          'Invalid request body for creating deck.',
+          validation.error.flatten()
+        );
+      }
+      payload = validation.data;
+    } catch (e) {
+      if (e instanceof ValidationError) {
+        throw e;
+      }
+      console.error('Error parsing/validating create deck request body:', e);
+      throw new ValidationError(
+        'Invalid JSON body or structure for creating deck.'
+      );
     }
 
-    const { limit, offset } = validatedQuery;
+    // 3. Call Service Function (passing userId and payload)
+    // Service function handles adding userId to data and creation
+    const newDeck = await createDeck(userId, payload); // Pass userId
 
-    const { data: decks, totalItems } = await getAllDecks(userId, { limit, offset });
-
-    const baseUrl = '/api/decks';
-    const selfLink = `${baseUrl}?offset=${offset}&limit=${limit}`;
-    let nextLink: string | null = null;
-    if (offset + limit < totalItems) {
-      nextLink = `${baseUrl}?offset=${offset + limit}&limit=${limit}`;
-    }
-    let previousLink: string | null = null;
-    if (offset > 0) {
-      const prevOffset = Math.max(0, offset - limit);
-      previousLink = `${baseUrl}?offset=${prevOffset}&limit=${limit}`;
-    }
-
-    const responseBody = {
-      data: decks,
-      pagination: {
-        offset: offset,
-        limit: limit,
-        totalItems: totalItems,
-        _links: {
-          self: selfLink,
-          next: nextLink,
-          previous: previousLink,
-        },
-      },
-    };
-
-    return NextResponse.json(responseBody, { status: 200 });
-
-  } catch (error) {
+    // 4. Return Success Response (201 Created)
+    return NextResponse.json(newDeck, { status: 201 });
+  } catch (error: unknown) {
+    // Handle errors from auth, validation, service (e.g., unique constraint)
     return handleApiError(error);
   }
 }

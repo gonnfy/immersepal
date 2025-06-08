@@ -2,5 +2,5 @@
 export default {
   plugins: {
     '@tailwindcss/postcss': {}, // ← 元のこちらに戻す
-   },
-}
+  },
+};
