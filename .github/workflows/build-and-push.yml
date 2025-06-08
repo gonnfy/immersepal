@@ -1,0 +1,58 @@
+# .github/workflows/build-and-push.yml (複数タグ対応版)
+
+name: Build and Push Docker Image to GAR
+
+on:
+  push:
+    branches:
+      - feature/setup-cloudrun # このブランチにプッシュされたら実行
+
+env:
+  GCP_PROJECT_ID: adept-bridge-457703-u9 # ★ あなたのGCPプロジェクトID ★
+  GAR_LOCATION: asia-northeast1 # Artifact Registryのリージョン
+  SERVICE_NAME: anki-ai # イメージ名
+  REPOSITORY_NAME: anki-ai-repo # Artifact Registryのリポジトリ名
+  IMAGE_VERSION: v1.0.0 # ★ アプリケーションのバージョン番号をここで管理 ★
+
+jobs:
+  build-and-push:
+    name: Build and Push
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: "projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "anki-ai-github-actions@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
+
+      - name: Build and Push Docker Image with Multiple Tags
+        run: |
+          # Gitのコミットハッシュの先頭7文字を取得
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          echo "Tagging with: latest, ${{ env.IMAGE_VERSION }}, sha-${SHORT_SHA}"
+
+          # Dockerイメージのベース名を定義
+          IMAGE_BASE_NAME="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.SERVICE_NAME }}"
+
+          # 複数のタグを付けて一度にビルド
+          docker build --platform linux/amd64 \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
+            -t "${IMAGE_BASE_NAME}:latest" \
+            -t "${IMAGE_BASE_NAME}:${{ env.IMAGE_VERSION }}" \
+            -t "${IMAGE_BASE_NAME}:sha-${SHORT_SHA}" \
+            .
+
+          # --all-tags オプションを使って、作成したすべてのタグを一度にプッシュ
+          docker push --all-tags "${IMAGE_BASE_NAME}"

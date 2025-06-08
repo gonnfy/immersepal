@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# .env で終わるファイル、または .env. で始まるファイルを無視する
+.env
+.env.*
+
+# ただし、.env.example は無視の対象から除外する（追跡対象にする）
+!.env.example
 
 # vercel
 .vercel
@@ -42,3 +46,6 @@ next-env.d.ts
 
 # key
 keys/
+
+# Terraform working directory
+.terraform/
