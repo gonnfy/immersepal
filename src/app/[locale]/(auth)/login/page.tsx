@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase"; // Supabaseクライアントをインポート
 import { useAuth } from "@/hooks/useAuth";
-import { Link, useRouter } from "@/i18n/navigation"; // useRouter もインポート
+import { Link } from "@/i18n/navigation"; // useRouter もインポート
 
 export default function LoginPage() {
   // --- 既存のログインフォーム用 State ---
@@ -13,7 +13,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { signIn } = useAuth();
-  const router = useRouter();
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

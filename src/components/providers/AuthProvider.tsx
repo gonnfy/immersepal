@@ -1,13 +1,7 @@
 // src/components/providers/AuthProvider.tsx (ルーティングフック修正版)
 "use client";
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-} from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { Session, User, AuthChangeEvent } from "@supabase/supabase-js"; // SupabaseClient は直接使わないので削除
 import { createClient } from "@/lib/supabase";
 // ★ 標準の next/navigation からフックをインポート ★
