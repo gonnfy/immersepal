@@ -1,22 +1,72 @@
-# .github/workflows/build-and-push.yml (複数タグ対応版)
+# .github/workflows/build-and-push.yml (CD機能追加版)
 
-name: Build and Push Docker Image to GAR
+name: Build, Push, and Deploy to Cloud Run
 
 on:
   push:
+    # mainブランチにプッシュ（マージ）されたら、このワークフローを実行する
     branches:
-      - feature/setup-cloudrun # このブランチにプッシュされたら実行
+      - main
 
 env:
-  GCP_PROJECT_ID: adept-bridge-457703-u9 # ★ あなたのGCPプロジェクトID ★
+  GCP_PROJECT_ID: adept-bridge-457703-u9 # あなたのGCPプロジェクトID
   GAR_LOCATION: asia-northeast1 # Artifact Registryのリージョン
   SERVICE_NAME: anki-ai # イメージ名
   REPOSITORY_NAME: anki-ai-repo # Artifact Registryのリポジトリ名
-  IMAGE_VERSION: v1.0.0 # ★ アプリケーションのバージョン番号をここで管理 ★
+  IMAGE_VERSION: v1.0.0 # アプリケーションのバージョン番号
 
 jobs:
-  build-and-push:
-    name: Build and Push
+  # --- ジョブ1: Dockerイメージのビルドとプッシュ ---
+  build-and-push-image:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    outputs:
+      image_tag: ${{ steps.push-to-gar.outputs.image_tag }} # このジョブの出力としてイメージタグを定義
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: "projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "anki-ai-github-actions@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
+
+      - name: Build and Push Docker Image with Multiple Tags
+        id: build-and-push # このステップにIDを付与
+        run: |
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-8)
+          IMAGE_BASE_NAME="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.SERVICE_NAME }}"
+
+          # 複数のタグを付けてビルド
+          docker build --platform linux/amd64 \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
+            -t "${IMAGE_BASE_NAME}:latest" \
+            -t "${IMAGE_BASE_NAME}:${{ env.IMAGE_VERSION }}" \
+            -t "${IMAGE_BASE_NAME}:sha-${SHORT_SHA}" \
+            .
+
+          # 全てのタグをプッシュ
+          docker push --all-tags "${IMAGE_BASE_NAME}"
+
+          # このジョブの出力として、特定のタグ（例：コミットハッシュ）を次のジョブに渡す
+          echo "image_tag=sha-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+  # --- ★★★ ジョブ2: Terraformによるデプロイ（ここからが新しい部分） ★★★ ---
+  deploy-to-cloud-run:
+    name: Deploy to Cloud Run
+    # build-and-push-image ジョブが成功した後にのみ実行する
+    needs: build-and-push-image
     runs-on: ubuntu-latest
 
     permissions:
@@ -33,26 +83,15 @@ jobs:
           workload_identity_provider: "projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "anki-ai-github-actions@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
 
-      - name: Configure Docker
-        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.0" # 使用するバージョンを指定
 
-      - name: Build and Push Docker Image with Multiple Tags
-        run: |
-          # Gitのコミットハッシュの先頭7文字を取得
-          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
-          echo "Tagging with: latest, ${{ env.IMAGE_VERSION }}, sha-${SHORT_SHA}"
+      - name: Terraform Init
+        run: terraform init
 
-          # Dockerイメージのベース名を定義
-          IMAGE_BASE_NAME="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.SERVICE_NAME }}"
-
-          # 複数のタグを付けて一度にビルド
-          docker build --platform linux/amd64 \
-            --build-arg NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
-            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
-            -t "${IMAGE_BASE_NAME}:latest" \
-            -t "${IMAGE_BASE_NAME}:${{ env.IMAGE_VERSION }}" \
-            -t "${IMAGE_BASE_NAME}:sha-${SHORT_SHA}" \
-            .
-
-          # --all-tags オプションを使って、作成したすべてのタグを一度にプッシュ
-          docker push --all-tags "${IMAGE_BASE_NAME}"
+      - name: Terraform Apply
+        # -auto-approve オプションで、対話なし（yesの入力なし）で自動的に適用する
+        # -var オプションで、前のジョブでビルドしたイメージタグを渡すことも可能（今回はlatestを使うので省略）
+        run: terraform apply -auto-approve
