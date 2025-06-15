@@ -37,15 +37,19 @@ jobs:
 
       - name: Build and Push Docker Image
         id: build-and-push
-        run: SHORT_SHA="sha-$(echo $GITHUB_SHA | cut -c1-8)"
+        run: |
+          # コミットハッシュからタグを生成 (8文字に戻していますが、7文字でも問題ありません)
+          SHORT_SHA="sha-$(echo $GITHUB_SHA | cut -c1-8)"
           IMAGE_URL="${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.SERVICE_NAME }}"
 
+          echo "Building and tagging image with: ${IMAGE_URL}:${SHORT_SHA} and ${IMAGE_URL}:latest"
+
           docker build --platform linux/amd64 \
-          --build-arg NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
-          --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
-          -t "${IMAGE_URL}:${SHORT_SHA}" \
-          -t "${IMAGE_URL}:latest" \
-          .
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }} \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }} \
+            -t "${IMAGE_URL}:${SHORT_SHA}" \
+            -t "${IMAGE_URL}:latest" \
+            .
 
           docker push --all-tags "${IMAGE_URL}"
 
