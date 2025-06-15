@@ -24,26 +24,22 @@ resource "google_cloud_run_v2_service" "anki_ai" {
   location = var.region
   project  = var.project_id
 
-  # 誰でもアクセスできるようにする設定
   ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
-    # オートスケーリング設定
     scaling {
-      min_instance_count = 0 # 普段は0でコスト節約
+      min_instance_count = 0 
       max_instance_count = 10
     }
-    
-    # Workload Identity のためのサービスアカウントを指定
+  
     service_account = "anki-ai-runtime-sa@${var.project_id}.iam.gserviceaccount.com"
 
     containers {
-      image = "asia-northeast1-docker.pkg.dev/${var.project_id}/anki-ai-repo/anki-ai:latest"
+      image = "asia-northeast1-docker.pkg.dev/${var.project_id}/anki-ai-repo/anki-ai:${var.image_tag}"
       ports {
         container_port = 8080
       }
-
-      # 環境変数をSecret Managerから自動で設定
+      
       dynamic "env" {
         for_each = toset(local.secrets)
 

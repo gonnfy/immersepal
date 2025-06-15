@@ -9,3 +9,9 @@ variable "region" {
   description = "The GCP region to deploy resources."
   default     = "asia-northeast1"
 }
+
+variable "image_tag" {
+  type        = string
+  description = "The Docker image tag to deploy."
+  default     = "latest"
+}
