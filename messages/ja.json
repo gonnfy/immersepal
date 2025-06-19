@@ -1,7 +1,9 @@
 {
-  "HomePage": {
-    "title": "こんにちは!",
-    "about": "ページはここ"
+  "LandingPage": {
+    "welcome": "anki-ai へようこそ",
+    "subtitle": "あなたの言語習得を加速する、インテリジェントなパートナー。\n現実のようなAI音声で、出会ったフレーズを瞬時に学習。",
+    "login": "ログイン",
+    "signup": "サインアップ"
   },
   "cardCreateForm": {
     "frontLabel": "表面",
