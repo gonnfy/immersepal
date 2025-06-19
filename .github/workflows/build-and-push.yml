@@ -27,6 +27,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: "DEBUG: Display Workflow File Content"
+        run: |
+          echo "--- Start of workflow file content ---"
+          # ↓↓↓ あなたの実際のファイル名に合わせてください ↓↓↓
+          cat .github/workflows/build-and-push.yml
+          echo "--- End of workflow file content ---"
+
       - name: Authenticate to Google Cloud
         id: auth
         uses: "google-github-actions/auth@v2"
