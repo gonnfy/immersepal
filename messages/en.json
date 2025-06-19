@@ -1,7 +1,12 @@
 {
-  "HomePage": {
-    "title": "Hello world!",
-    "about": "Go to the about page"
+  "LandingPage": {
+    "welcome": "Welcome to anki-ai",
+    "subtitle": "Your intelligent partner for language acquisition.\nCapture phrases frictionlessly, learn with realistic AI voices.",
+    "login": "Log In",
+    "signup": "Sign Up",
+    "signupNow": "Sign up for free",
+    "alreadyHaveAccount": "Already have an account?",
+    "loginHere": "Log in here"
   },
   "cardCreateForm": {
     "frontLabel": "Front",
