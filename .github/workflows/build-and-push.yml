@@ -1,4 +1,4 @@
-# .github/workflows/build-and-push.yml (または deploy.yml)
+# .github/workflows/deploy.yml (最終確定版)
 
 name: Build, Push, and Deploy to Cloud Run
 
@@ -27,13 +27,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: "DEBUG: Display Workflow File Content"
-        run: |
-          echo "--- Start of workflow file content ---"
-          # ↓↓↓ あなたの実際のファイル名に合わせてください ↓↓↓
-          cat .github/workflows/build-and-push.yml
-          echo "--- End of workflow file content ---"
-
       - name: Authenticate to Google Cloud
         id: auth
         uses: "google-github-actions/auth@v2"
@@ -41,12 +34,8 @@ jobs:
           workload_identity_provider: "projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "anki-ai-github-actions@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
 
-      - name: Login to Google Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GAR_LOCATION }}-docker.pkg.dev
-          username: oauth2accesstoken
-          password: ${{ steps.auth.outputs.access_token }}
+      - name: Configure Docker for Google Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GAR_LOCATION }}-docker.pkg.dev
 
       - name: Generate image tag
         id: get-tag
