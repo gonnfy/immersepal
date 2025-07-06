@@ -1,4 +1,4 @@
-# .env に記載されているキーの一覧 (シークレットとして扱う)
+
 locals {
   secrets = [
     "DATABASE_URL",
@@ -27,10 +27,10 @@ resource "google_cloud_run_v2_service" "anki_ai" {
 
   template {
     scaling {
-      min_instance_count = 0 
+      min_instance_count = 0
       max_instance_count = 10
     }
-  
+    
     service_account = "anki-ai-runtime-sa@${var.project_id}.iam.gserviceaccount.com"
 
     containers {
@@ -41,7 +41,6 @@ resource "google_cloud_run_v2_service" "anki_ai" {
       
       dynamic "env" {
         for_each = toset(local.secrets)
-
         content {
           name = env.value
           value_source {
@@ -60,7 +59,45 @@ resource "google_cloud_run_v2_service_iam_member" "allow_unauthenticated" {
   project  = google_cloud_run_v2_service.anki_ai.project
   location = google_cloud_run_v2_service.anki_ai.location
   name     = google_cloud_run_v2_service.anki_ai.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
 
-  role   = "roles/run.invoker"
-  member = "allUsers"
+resource "google_project_iam_member" "runtime_sa_secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:anki-ai-runtime-sa@${var.project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "runtime_sa_aiplatform_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:anki-ai-runtime-sa@${var.project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "runtime_sa_storage_admin" {
+  project = var.project_id
+  role    = "roles/storage.objectAdmin"
+  member  = "serviceAccount:anki-ai-runtime-sa@${var.project_id}.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "runtime_sa_token_creator" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:anki-ai-runtime-sa@${var.project_id}.iam.gserviceaccount.com"
+}
+
+
+resource "google_cloud_run_domain_mapping" "default" {
+  name     = "immersepal.com"
+  location = var.region
+  project  = var.project_id
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = google_cloud_run_v2_service.anki_ai.name
+  }
 }
