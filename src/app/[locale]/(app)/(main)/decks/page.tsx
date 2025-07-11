@@ -1,4 +1,3 @@
-// src/app/[locale]/(app)/(main)/decks/page.tsx (エラーハンドリング表示強化 + フォーマット修正版)
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -8,50 +7,44 @@ import { useDeleteDeck } from "@/hooks/useDeckMutations";
 import { DeckCreateForm } from "@/components/features/DeckCreateForm";
 import { DeckEditModal } from "@/components/features/DeckEditModal";
 import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
-import { type DeckApiResponse } from "@/types"; // Import types
+import { type DeckApiResponse } from "@/types";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 
 function DecksPage() {
-  const { isLoading: authLoading } = useAuth(); // user も取得しておく (デバッグ用ログなど)
-
+  const { isLoading: authLoading } = useAuth();
   const ITEMS_PER_PAGE = 10;
   const [offset, setOffset] = useState(0);
 
-  // useDecks フック: デッキ一覧を取得
   const {
     decks,
     pagination,
-    isLoading: decksIsLoading, // 初期ロード中か
-    isFetching: decksIsFetching, // データ取得中か (ページ移動時など)
-    error: decksError, // デッキ取得時のエラー
+    isLoading: decksIsLoading,
+    isFetching: decksIsFetching,
+    error: decksError,
   } = useDecks({
     offset: offset,
     limit: ITEMS_PER_PAGE,
   });
 
-  // useDeleteDeck フック: デッキ削除処理
   const {
     mutate: deleteDeckMutate,
-    isPending: isDeletingDeck, // 削除処理中か
-    error: deleteDeckError, // デッキ削除時のエラー
+    isPending: isDeletingDeck,
+    error: deleteDeckError,
   } = useDeleteDeck();
 
-  // --- Component State ---
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [deckToDelete, setDeckToDelete] = useState<DeckApiResponse | null>(
     null,
   );
   const [editingDeck, setEditingDeck] = useState<DeckApiResponse | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isMounted, setIsMounted] = useState(false); // Portal 用
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Portal マウント用 Effect
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // --- Event Handlers ---
   const handleDeleteClick = (deck: DeckApiResponse) => {
     setDeckToDelete(deck);
     setIsConfirmOpen(true);
@@ -66,21 +59,17 @@ function DecksPage() {
   };
 
   const handleEditClick = (deck: DeckApiResponse) => {
+    console.log("handleEditがクリックされました", deck);
     setEditingDeck(deck);
     setIsEditModalOpen(true);
   };
 
-  // --- Helper Components ---
   const Spinner = () => (
     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>
   );
 
-  // --- Render Logic ---
+  const isLoading = authLoading || (decksIsLoading && !pagination);
 
-  // 全体のローディング状態 (認証情報ロード中 または 初回デッキデータロード中)
-  const isLoading = authLoading || (decksIsLoading && !pagination); // pagination がまだ無い場合を初回ロードとする
-
-  // 初回ロード中はスピナー表示
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -89,7 +78,6 @@ function DecksPage() {
     );
   }
 
-  // ★ デッキ取得エラーが発生した場合の表示 ★
   if (!decksIsLoading && decksError) {
     return (
       <div className="container mx-auto p-4">
@@ -110,7 +98,7 @@ function DecksPage() {
             Please try refreshing the page. If the problem persists, contact
             support.
           </p>
-          {/* 認証エラー(401)や権限エラー(403)の場合、ログインページへのリンクなどを追加しても良い */}
+          {}
         </div>
       </div>
     );
@@ -267,7 +255,8 @@ function DecksPage() {
           />,
           document.body,
         )}
-      {isMounted &&
+
+      {/* {isMounted &&
         editingDeck &&
         createPortal(
           <DeckEditModal
@@ -278,6 +267,20 @@ function DecksPage() {
               setIsEditModalOpen(false);
               setEditingDeck(null);
               console.log("Deck update successful, modal closed.");
+            }}
+          />,
+          document.body,
+        )} */}
+
+      {isEditModalOpen &&
+        createPortal(
+          <DeckEditModal
+            isOpen={isEditModalOpen}
+            onOpenChange={setIsEditModalOpen}
+            deck={editingDeck}
+            onSuccess={() => {
+              setIsEditModalOpen(false);
+              setEditingDeck(null);
             }}
           />,
           document.body,

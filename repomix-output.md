@@ -3,24 +3,20 @@ This file is a merged representation of the entire codebase, combined into a sin
 # File Summary
 
 ## Purpose
-
 This file contains a packed representation of the entire repository's contents.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
 
 ## File Format
-
 The content is organized as follows:
-
 1. This summary section
 2. Repository information
 3. Directory structure
 4. Multiple file entries, each consisting of:
-   a. A header with the file path (## File: path/to/file)
-   b. The full contents of the file in a code block
+  a. A header with the file path (## File: path/to/file)
+  b. The full contents of the file in a code block
 
 ## Usage Guidelines
-
 - This file should be treated as read-only. Any changes should be made to the
   original repository files, not this packed version.
 - When processing this file, use the file path to distinguish
@@ -29,7 +25,6 @@ The content is organized as follows:
   the same level of security as you would the original repository.
 
 ## Notes
-
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
 - Files matching patterns in .gitignore are excluded
@@ -39,7 +34,6 @@ The content is organized as follows:
 ## Additional Info
 
 # Directory Structure
-
 ```
 api-design.md
 coding-style.md
@@ -54,7 +48,6 @@ testing-strategy.md
 # Files
 
 ## File: api-design.md
-
 ````markdown
 # API 設計 v1.2 (音声対応・AICardContent 拡充)
 
@@ -489,7 +482,6 @@ erDiagram
 ````
 
 ## File: coding-style.md
-
 ````markdown
 # コーディングスタイルガイド
 
@@ -564,7 +556,6 @@ erDiagram
 ````
 
 ## File: database-design.md
-
 ````markdown
 # データベース設計 v1.2 (AICardContent 拡充: 音声対応)
 
@@ -819,7 +810,6 @@ erDiagram
 ````
 
 ## File: error-handling.md
-
 ````markdown
 # Error Handling Strategy v1.1
 
@@ -956,7 +946,6 @@ Next.js のサーバーサイドコンテキスト (RSC, API Routes, Server Acti
 ````
 
 ## File: feature-deck-details.md
-
 ````markdown
 # Plan: Deck Detail Page Feature (v1.1 - AICardContent Reflected)
 
@@ -1079,8 +1068,7 @@ sequenceDiagram
 ````
 
 ## File: functional-requirements.md
-
-```markdown
+````markdown
 # 機能要件定義 v1.1 (2025-04-22)
 
 ## 1. 概要
@@ -1188,11 +1176,10 @@ AI を活用した多言語対応の単語帳（フラッシュカード）Web �
 - デッキ共有機能
 
 ---
-```
+````
 
 ## File: non-functional-requirements.md
-
-```markdown
+````markdown
 # 非機能要件 v1.1 (2025-04-22)
 
 このドキュメントは、アプリケーションの品質特性に関する要件と方針を定義します。
@@ -1253,11 +1240,10 @@ AI を活用した多言語対応の単語帳（フラッシュカード）Web �
 - **UI ライブラリ:** Tamagui 導入済みだが、React 19/Next.js 15 との互換性問題発生中。主要箇所で標準 HTML + Tailwind に代替中。根本解決はバージョンダウン等を検討。
 
 ---
-```
+````
 
 ## File: testing-strategy.md
-
-```markdown
+````markdown
 # テスト戦略
 
 ## 1. 目的
@@ -1312,4 +1298,4 @@ AI を活用した多言語対応の単語帳（フラッシュカード）Web �
 
 - CI でカバレッジレポートを生成・確認します。
 - カバレッジ率はテストされていない箇所を見つけるための**指標**とし、絶対的な品質基準とはしません。重要なロジックや複雑な分岐を網羅することを目指します。
-```
+````

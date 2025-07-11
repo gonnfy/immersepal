@@ -20,7 +20,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isLoading && user) {
       console.log("User is already logged in, redirecting to /decks...");
-      router.push(`/${locale}/decks`);
+      router.push(`decks`);
     }
   }, [user, isLoading, router, locale]);
 
