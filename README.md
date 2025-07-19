@@ -1,6 +1,6 @@
 # ImmersePal
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/gonnfy/immersepal/test.yml?branch=main)](https://github.com/gonnfy/immersepal/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/shibuyus/immersepal/test.yml?branch=main)](https://github.com/shibuyus/immersepal/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 生成AIと共に、言語学習者が実践的なコンテンツに触れる「イマージョン学習」を加速させるためのWebアプリケーション。
@@ -59,11 +59,35 @@
 
 ---
 
+## Architecture & Design
+
+このアプリケーションは、スケーラビリティと保守性を重視して設計されています。
+
+- **コスト効率とスケーラビリティ:** ホスティングに`Google Cloud Run`を採用。アクセスがない時間帯はインスタンス数をゼロにするスケール・トゥ・ゼロにより、コストを最小限に抑えています。一方で、急なトラフィック増には自動でスケールアップして対応可能です。
+  
+- **フルスタックNext.js:** フロントエンドとバックエンドをNext.jsで統一し、シームレスな開発体験と高いパフォーマンスを実現しています。
+
+- **Infrastructure as Code (IaC):** `Terraform`を用いて全てのインフラをコードで管理。手作業による設定ミスを防ぎ、誰でも同じ本番環境を再現可能です。
+
+- **自動化されたCI/CD:** `GitHub Actions`により、`main`ブランチへのマージをトリガーに、テストから本番環境へのデプロイまでが完全に自動化されています。
+
+- **セキュアな認証:** `Workload Identity Federation`を活用し、CI/CDパイプラインはサービスアカウントキー（秘密鍵）なしで安全にGCPリソースを操作します。
+
+---
+
+## 📝 今後の展望 (Roadmap)
+
+- [ ] モバイルアプリ版の開発 (React Native / Expo)
+- [ ] 学習リマインダー通知機能
+- [ ] ユーザー間のデッキ共有機能
+
+---
+
 ## 🚀　Getting Started
 
 1.  **リポジトリをクローン:**
     ```bash
-    git clone [https://github.com/gonnfy/immersepal.git](https://github.com/gonnfy/immersepal.git)
+    git clone https://github.com/shibuyus/immersepal.git
     cd immersepal
     ```
 
@@ -103,14 +127,6 @@
     bun run dev
     ```
     ブラウザで `http://localhost:3000` を開いてください。
-
----
-
-## 📝 今後の展望 (Roadmap)
-
-- [ ] モバイルアプリ版の開発 (React Native / Expo)
-- [ ] 学習リマインダー通知機能
-- [ ] ユーザー間のデッキ共有機能
 
 ---
 
