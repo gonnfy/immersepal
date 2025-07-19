@@ -16,5 +16,40 @@
     "createButton": "カードを追加",
     "creatingButton": "作成中...",
     "creationError": "カード作成エラー: {message}"
+  },
+  "LoginPage": {
+    "title": "ログイン",
+    "emailPlaceholder": "メールアドレス",
+    "passwordPlaceholder": "パスワード",
+    "button": "ログイン",
+    "loadingButton": "ログイン中...",
+    "forgotPassword": "パスワードを忘れましたか？",
+    "noAccount": "アカウントをお持ちでないですか？",
+    "signUp": "サインアップ"
+  },
+  "ResetPasswordPage": {
+    "title": "パスワードのリセット",
+    "description": "メールアドレスを入力してください。パスワード再設定用のリンクを送信します。",
+    "button": "リセット用リンクを送信",
+    "sendingButton": "送信中...",
+    "backToLogin": "ログイン画面に戻る"
+  },
+  "SignUpPage": {
+    "title": "サインアップ",
+    "emailPlaceholder": "メールアドレス",
+    "passwordPlaceholder": "パスワード（6文字以上）",
+    "button": "サインアップ",
+    "loadingButton": "登録中...",
+    "successMessage": "登録が完了しました！確認用のメールをご確認ください。",
+    "alreadyAccount": "すでにアカウントをお持ちですか？",
+    "logIn": "ログイン"
+  },
+  "DeckCreateForm": {
+    "deckNameLabel": "デッキ名",
+    "deckNamePlaceholder": "例：英単語",
+    "descriptionLabel": "説明（任意）",
+    "descriptionPlaceholder": "例：ロンドン旅行で使う単語",
+    "createButton": "デッキを作成",
+    "creatingButton": "作成中..."
   }
 }

@@ -1,4 +1,3 @@
-// src/app/[locale]/page.tsx (ボタン/リンク分離版)
 "use client";
 
 import { useEffect } from "react";
@@ -42,7 +41,6 @@ export default function HomePage() {
           {t("subtitle")}
         </p>
 
-        {/* ★★★ このdivブロックを修正 ★★★ */}
         <div className="mt-10 flex flex-col items-center justify-center gap-y-4">
           {/* プライマリーボタン (サインアップ) */}
           <Link
@@ -62,7 +60,6 @@ export default function HomePage() {
             </Link>
           </p>
         </div>
-        {/* ★★★ 修正ここまで ★★★ */}
       </div>
     </main>
   );

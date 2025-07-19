@@ -16,5 +16,40 @@
     "createButton": "Add Card",
     "creatingButton": "Creating...",
     "creationError": "Error creating card: {message}"
+  },
+  "LoginPage": {
+    "title": "Log In",
+    "emailPlaceholder": "Email",
+    "passwordPlaceholder": "Password",
+    "button": "Log In",
+    "loadingButton": "Logging In...",
+    "forgotPassword": "Forgot Password?",
+    "noAccount": "Don't have an account?",
+    "signUp": "Sign Up"
+  },
+  "ResetPasswordPage": {
+    "title": "Reset Password",
+    "description": "Enter your email address and we will send you a link to reset your password.",
+    "button": "Send Reset Link",
+    "sendingButton": "Sending...",
+    "backToLogin": "Back to Log In"
+  },
+  "SignUpPage": {
+    "title": "Sign Up",
+    "emailPlaceholder": "Email",
+    "passwordPlaceholder": "Password (min. 6 characters)",
+    "button": "Sign Up",
+    "loadingButton": "Signing Up...",
+    "successMessage": "Sign up successful! Please check your email for verification.",
+    "alreadyAccount": "Already have an account?",
+    "logIn": "Log In"
+  },
+  "DeckCreateForm": {
+    "deckNameLabel": "Deck Name",
+    "deckNamePlaceholder": "e.g. English Vocabulary",
+    "descriptionLabel": "Description (Optional)",
+    "descriptionPlaceholder": "e.g. Words for my trip to London",
+    "createButton": "Create Deck",
+    "creatingButton": "Creating..."
   }
 }

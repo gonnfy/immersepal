@@ -1,152 +1,98 @@
-// src/app/[locale]/(auth)/login/page.tsx (パスワードリセット機能追加版)
 "use client";
 
-import { useState } from "react";
-import { createClient } from "@/lib/supabase"; // Supabaseクライアントをインポート
+import { useState, FormEvent } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Link } from "@/i18n/navigation"; // useRouter もインポート
+import { Link } from "@/i18n/navigation";
+import { useTranslations } from "next-intl";
+
+const _Spinner = () => (
+  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+);
 
 export default function LoginPage() {
-  // --- 既存のログインフォーム用 State ---
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { signIn } = useAuth();
+  const { signIn, isLoading } = useAuth();
+  const t = useTranslations("LoginPage");
 
-  const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSignIn = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
     const { error: signInError } = await signIn(email, password);
     if (signInError) {
       setError(signInError.message);
-    } else {
-      // ログイン成功時のリダイレクトは AuthProvider で処理されるはず
-      // router.push('/decks'); // ここでのリダイレクトは不要な場合が多い
-      console.log(
-        "Login successful, waiting for redirect from AuthProvider...",
-      );
     }
-    setLoading(false);
   };
-
-  // --- ★ パスワードリセット用に追加 ★ ---
-  const [resetEmail, setResetEmail] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetMessage, setResetMessage] = useState("");
-  const [resetError, setResetError] = useState("");
-
-  const handlePasswordReset = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setResetLoading(true);
-    setResetMessage("");
-    setResetError("");
-
-    const supabase = createClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      resetEmail,
-      {
-        // ★ ここでリダイレクト先を明示的に指定します ★
-        redirectTo: `${window.location.origin}/reset-password`,
-      },
-    );
-
-    if (resetError) {
-      console.error("Password reset error:", resetError);
-      setResetError(resetError.message);
-    } else {
-      setResetMessage("Password reset link sent! Please check your email.");
-    }
-    setResetLoading(false);
-  };
-  // --- ★ 追加ここまで ★ ---
 
   return (
-    <div style={{ maxWidth: "400px", margin: "auto", paddingTop: "50px" }}>
-      {/* --- 既存のログインフォーム --- */}
-      <h2>Log In</h2>
-      <form onSubmit={handleSignIn}>
-        <div>
-          <label htmlFor="email">Email:</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
-          />
-        </div>
-        <div>
-          <label htmlFor="password">Password:</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: "100%", padding: "8px", marginBottom: "20px" }}
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: "10px 20px",
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
+    <div className="flex flex-1 justify-center items-center min-h-screen bg-gray-50 p-4">
+      <div className="w-full max-w-md space-y-6">
+        <h2 className="text-3xl font-bold text-center text-gray-900">
+          {t("title")}
+        </h2>
+        <form
+          onSubmit={handleSignIn}
+          className="space-y-4 p-6 bg-white rounded-xl shadow-lg border"
         >
-          {loading ? "Logging In..." : "Log In"}
-        </button>
-      </form>
-      {error && (
-        <p style={{ color: "red", marginTop: "10px" }}>Error: {error}</p>
-      )}
-      <p style={{ marginTop: "20px" }}>
-        Don&apos;t have an account? <Link href="/signup">Sign Up</Link>
-      </p>
-
-      <hr style={{ margin: "40px 0" }} />
-
-      {/* --- ★ パスワードリセット用フォームを追加 ★ --- */}
-      <div>
-        <h2>Forgot Password?</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Enter your email address and we will send you a link to reset your
-          password.
-        </p>
-        <form onSubmit={handlePasswordReset}>
           <div>
-            <label htmlFor="reset-email">Email:</label>
+            <label htmlFor="email" className="sr-only">
+              Email
+            </label>
             <input
-              id="reset-email"
+              id="email"
               type="email"
-              value={resetEmail}
-              onChange={(e) => setResetEmail(e.target.value)}
+              placeholder={t("emailPlaceholder")}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
-              style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
+          <div>
+            <label htmlFor="password" className="sr-only">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              placeholder={t("passwordPlaceholder")}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+
+          {error && <p className="text-red-500 text-center text-sm">{error}</p>}
+
           <button
             type="submit"
-            disabled={resetLoading}
-            style={{
-              padding: "10px 20px",
-              cursor: resetLoading ? "not-allowed" : "pointer",
-            }}
+            className="w-full flex justify-center items-center px-4 py-2 bg-indigo-600 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 disabled:bg-indigo-400 transition-colors"
+            disabled={isLoading}
           >
-            {resetLoading ? "Sending..." : "Send Reset Link"}
+            {isLoading ? t("loadingButton") : t("button")}
           </button>
+
+          <div className="text-center space-y-2 pt-2 text-sm text-gray-600">
+            <p>
+              <Link href="/reset-password">
+                <span className="font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer">
+                  {t("forgotPassword")}
+                </span>
+              </Link>
+            </p>
+            <p>
+              {t("noAccount")}{" "}
+              <Link href="/signup">
+                <span className="font-medium text-indigo-600 hover:text-indigo-500">
+                  {t("signUp")}
+                </span>
+              </Link>
+            </p>
+          </div>
         </form>
-        {resetError && (
-          <p style={{ color: "red", marginTop: "10px" }}>{resetError}</p>
-        )}
-        {resetMessage && (
-          <p style={{ color: "green", marginTop: "10px" }}>{resetMessage}</p>
-        )}
       </div>
-      {/* --- ★ 追加ここまで ★ --- */}
     </div>
   );
 }

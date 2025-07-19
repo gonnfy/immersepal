@@ -36,7 +36,7 @@ export function ConfirmationDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-500 border-8 border-lime-400"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 border-8 border-lime-400"
       aria-labelledby="confirmation-dialog-title"
       role="dialog"
       aria-modal="true"

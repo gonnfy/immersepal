@@ -1,11 +1,12 @@
-# .github/workflows/deploy.yml (最終確定版)
-
 name: Build, Push, and Deploy to Cloud Run
 
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
 
 env:
   GCP_PROJECT_ID: adept-bridge-457703-u9
