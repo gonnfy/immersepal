@@ -1,6 +1,6 @@
 # ImmersePal
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/shibuyus/immersepal/test.yml?branch=main)](https://github.com/shibuyus/immersepal/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/shibuyus/immersepal/build-and-push.yml?branch=main)](https://github.com/shibuyus/immersepal/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 生成AIと共に、言語学習者が実践的なコンテンツに触れる「イマージョン学習」を加速させるためのWebアプリケーション。
