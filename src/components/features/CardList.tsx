@@ -1,46 +1,43 @@
-// src/components/features/CardList.tsx (完全版 - スタイル復元 + Lint修正 + TTS機能)
+"use client";
 
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCards, Card } from '@/hooks/useCards';
-import { AiContentType } from '@prisma/client';
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCards, Card } from "@/hooks/useCards";
+import { AiContentType } from "@prisma/client";
 import {
   useDeleteCard,
   Card as CardWithStringDates,
-} from '@/hooks/useCardMutations';
-import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { CardEditModal } from './CardEditModal';
+} from "@/hooks/useCardMutations";
+import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
+import { CardEditModal } from "./CardEditModal";
 import {
   useGenerateTts,
   type TtsPayload,
   type TtsSuccessResponse,
-} from '@/hooks/useGenerateTts';
+} from "@/hooks/useGenerateTts";
 import {
   useSaveAiContent,
   type SaveAiContentVariables,
-} from '@/hooks/useSaveAiContent';
-import { useGetTtsUrl } from '@/hooks/useGetTtsUrl';
-import { SpeakerWaveIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
-import { AppError } from '@/lib/errors';
-import { type AICardContentApiResponse } from '@/types/api.types';
+} from "@/hooks/useSaveAiContent";
+import { useGetTtsUrl } from "@/hooks/useGetTtsUrl";
+import { SpeakerWaveIcon, ArrowPathIcon } from "@heroicons/react/24/solid";
+import { AppError } from "@/lib/errors";
+import { type AICardContentApiResponse } from "@/types/api.types";
 
 interface CardListProps {
   deckId: string;
 }
 
-// function 宣言形式
 export function CardList({ deckId }: CardListProps) {
   const ITEMS_PER_PAGE = 10;
   const [offset, setOffset] = useState(0);
 
   const {
-    cards, // 直接取得
-    pagination, // 直接取得
+    cards,
+    pagination,
     isLoading,
-    isFetching, // ページネーションで使用
+    isFetching,
     error: fetchCardsError,
   } = useCards(deckId, { offset: offset, limit: ITEMS_PER_PAGE });
 
@@ -49,7 +46,7 @@ export function CardList({ deckId }: CardListProps) {
   const [cardToDelete, setCardToDelete] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [editingCard, setEditingCard] = useState<CardWithStringDates | null>(
-    null
+    null,
   );
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
@@ -63,13 +60,12 @@ export function CardList({ deckId }: CardListProps) {
 
   const queryClient = useQueryClient();
 
-  // Mutations & Queries
   const deleteCardMutation = useDeleteCard(deckId, {
     onSuccess: (deletedCardId: string) => {
       console.log(`Successfully deleted card ${deletedCardId}`);
       setIsDeleteDialogOpen(false);
       setCardToDelete(null);
-      queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
+      queryClient.invalidateQueries({ queryKey: ["cards", deckId] });
     },
     onError: (error: AppError, cardId: string) => {
       console.error(`Failed to delete card ${cardId}:`, error.message);
@@ -83,16 +79,16 @@ export function CardList({ deckId }: CardListProps) {
     useSaveAiContent({
       onSuccess: (
         _data: AICardContentApiResponse,
-        variables: SaveAiContentVariables
+        variables: SaveAiContentVariables,
       ) => {
         console.log(`[CardList] AI Content saved for card ${variables.cardId}`);
-        queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
+        queryClient.invalidateQueries({ queryKey: ["cards", deckId] });
         setLoadingAudioId(null);
       },
       onError: (error: AppError, variables: SaveAiContentVariables) => {
         console.error(
           `[CardList] Failed to save AI content for card ${variables.cardId}:`,
-          error
+          error,
         );
         setTtsErrorMsg(`Failed to save audio info: ${error.message}`);
         setLoadingAudioId(null);
@@ -101,39 +97,34 @@ export function CardList({ deckId }: CardListProps) {
 
   const { mutate: generateTtsMutate, isPending: ttsIsPending } = useGenerateTts(
     {
-      // ★ ここで直接 onSuccess と onError を定義する ★
       onSuccess: (
         data: TtsSuccessResponse,
         variables: TtsPayload,
-        _context: unknown
+        _context: unknown,
       ) => {
-        // ★ _context を追加 ★
-        console.log('[CardList] TTS generated:', data.signedUrl, data.gcsPath);
-        setUrlToPlay(data.signedUrl); // 再生用URLをセット
-        // DBへ保存 (saveAiContentMutate は変更なし)
+        console.log("[CardList] TTS generated:", data.signedUrl, data.gcsPath);
+        setUrlToPlay(data.signedUrl);
         saveAiContentMutate({
           cardId: variables.cardId,
           contentType:
-            variables.side === 'front'
+            variables.side === "front"
               ? AiContentType.AUDIO_PRIMARY
               : AiContentType.AUDIO_SECONDARY,
           language:
             variables.language ||
-            (variables.side === 'front' ? 'en-US' : 'ja-JP'),
+            (variables.side === "front" ? "en-US" : "ja-JP"),
           content: data.gcsPath,
         });
-        // ローディング解除は saveAiContentMutate で行う
       },
       onError: (error: AppError, variables: TtsPayload, _context: unknown) => {
-        // ★ _context を追加 ★
         console.error(
           `[CardList] TTS generation failed for card ${variables.cardId}:`,
-          error
+          error,
         );
         setTtsErrorMsg(`Audio generation failed: ${error.message}`);
-        setLoadingAudioId(null); // ローディング解除
+        setLoadingAudioId(null);
       },
-    }
+    },
   );
 
   const {
@@ -142,7 +133,6 @@ export function CardList({ deckId }: CardListProps) {
     error: fetchUrlError,
   } = useGetTtsUrl(gcsPathToFetch);
 
-  // Effects
   useEffect(() => {
     if (signedUrlData?.signedUrl) {
       setUrlToPlay(signedUrlData.signedUrl);
@@ -152,8 +142,8 @@ export function CardList({ deckId }: CardListProps) {
   useEffect(() => {
     if (fetchUrlError) {
       console.error(
-        '[CardList] Failed to get signed URL via hook:',
-        fetchUrlError
+        "[CardList] Failed to get signed URL via hook:",
+        fetchUrlError,
       );
       setTtsErrorMsg(`Failed to get audio URL: ${fetchUrlError.message}`);
       setLoadingAudioId(null);
@@ -162,19 +152,19 @@ export function CardList({ deckId }: CardListProps) {
   }, [fetchUrlError]);
   useEffect(() => {
     if (urlToPlay) {
-      console.log('[CardList] Playing audio:', urlToPlay);
+      console.log("[CardList] Playing audio:", urlToPlay);
       try {
         const audio = new Audio(urlToPlay);
         audio.play();
         audio.onended = () => setLoadingAudioId(null);
         audio.onerror = () => {
-          console.error('Audio element error');
-          setTtsErrorMsg('Audio playback failed.');
+          console.error("Audio element error");
+          setTtsErrorMsg("Audio playback failed.");
           setLoadingAudioId(null);
         };
       } catch (audioError) {
-        console.error('Error initiating audio playback:', audioError);
-        setTtsErrorMsg('Audio playback failed.');
+        console.error("Error initiating audio playback:", audioError);
+        setTtsErrorMsg("Audio playback failed.");
         setLoadingAudioId(null);
       } finally {
         setUrlToPlay(null);
@@ -195,34 +185,34 @@ export function CardList({ deckId }: CardListProps) {
   const handleEditClick = (card: Card) => {
     const cardForModal: CardWithStringDates = {
       ...card,
-      createdAt: String(card.createdAt ?? ''),
-      updatedAt: String(card.updatedAt ?? ''),
-      nextReviewAt: String(card.nextReviewAt ?? ''),
+      createdAt: String(card.createdAt ?? ""),
+      updatedAt: String(card.updatedAt ?? ""),
+      nextReviewAt: String(card.nextReviewAt ?? ""),
     };
     setEditingCard(cardForModal);
     setIsEditModalOpen(true);
   };
-  const handlePlayAudio = (card: Card, side: 'front' | 'back') => {
+  const handlePlayAudio = (card: Card, side: "front" | "back") => {
     const languageCode =
-      side === 'front'
-        ? process.env.NEXT_PUBLIC_TTS_LANGUAGE_CODE_EN || 'en-US'
-        : process.env.NEXT_PUBLIC_TTS_LANGUAGE_CODE_JA || 'ja-JP';
+      side === "front"
+        ? process.env.NEXT_PUBLIC_TTS_LANGUAGE_CODE_EN || "en-US"
+        : process.env.NEXT_PUBLIC_TTS_LANGUAGE_CODE_JA || "ja-JP";
     const contentTypeToFind =
-      side === 'front'
+      side === "front"
         ? AiContentType.AUDIO_PRIMARY
         : AiContentType.AUDIO_SECONDARY;
     const loadingId = `${card.id}-${side}`;
     if (loadingAudioId) return;
     setTtsErrorMsg(null);
     const existingAudio = card.aiContents?.find(
-      (c) => c.contentType === contentTypeToFind && c.language === languageCode
+      (c) => c.contentType === contentTypeToFind && c.language === languageCode,
     );
     const gcsPath = existingAudio?.content;
     if (gcsPath) {
       setLoadingAudioId(loadingId);
       setGcsPathToFetch(gcsPath);
     } else {
-      const text = side === 'front' ? card.front : card.back;
+      const text = side === "front" ? card.front : card.back;
       if (text && text.trim().length > 0) {
         setLoadingAudioId(loadingId);
         generateTtsMutate({
@@ -232,12 +222,11 @@ export function CardList({ deckId }: CardListProps) {
           side,
         });
       } else {
-        setTtsErrorMsg('No text available to synthesize.');
+        setTtsErrorMsg("No text available to synthesize.");
       }
     }
   };
 
-  // Render Logic
   if (isLoading) {
     return <div className="text-center p-4">Loading cards...</div>;
   }
@@ -258,7 +247,6 @@ export function CardList({ deckId }: CardListProps) {
   }
 
   return (
-    // ★★★ JSX with full classNames restored from Message #163 ★★★
     <div>
       {ttsErrorMsg && (
         <div
@@ -274,11 +262,10 @@ export function CardList({ deckId }: CardListProps) {
           const isLoadingBack = loadingAudioId === `${card.id}-back`;
           const isDeleting =
             deleteCardMutation.isPending && cardToDelete === card.id;
-          // Calculate disable conditions directly
           const isAnyAudioProcessing =
             isFetchingUrl || ttsIsPending || isSavingContent;
-          const disablePlayButton = isAnyAudioProcessing || isDeleting; // Disable if any audio processing or deleting
-          const disableEditDeleteButton = isDeleting; // Disable only if deleting
+          const disablePlayButton = isAnyAudioProcessing || isDeleting;
+          const disableEditDeleteButton = isDeleting;
 
           return (
             <li
@@ -295,7 +282,7 @@ export function CardList({ deckId }: CardListProps) {
                       </p>
                       <button
                         type="button"
-                        onClick={() => handlePlayAudio(card, 'front')}
+                        onClick={() => handlePlayAudio(card, "front")}
                         disabled={disablePlayButton || !card.front}
                         className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed p-0.5"
                         aria-label="Play front audio"
@@ -320,7 +307,7 @@ export function CardList({ deckId }: CardListProps) {
                       </p>
                       <button
                         type="button"
-                        onClick={() => handlePlayAudio(card, 'back')}
+                        onClick={() => handlePlayAudio(card, "back")}
                         disabled={disablePlayButton || !card.back}
                         className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed p-0.5"
                         aria-label="Play back audio"
@@ -351,14 +338,14 @@ export function CardList({ deckId }: CardListProps) {
                             title={`Type: ${content.contentType}, Lang: ${content.language}`}
                           >
                             {content.contentType === AiContentType.EXPLANATION
-                              ? 'Expl.'
+                              ? "Expl."
                               : content.contentType ===
                                   AiContentType.TRANSLATION
-                                ? 'Transl.'
+                                ? "Transl."
                                 : content.contentType.replace(
-                                    'AUDIO_',
-                                    'Aud.'
-                                  )}{' '}
+                                    "AUDIO_",
+                                    "Aud.",
+                                  )}{" "}
                             ({content.language})
                           </span>
                         ))}
@@ -374,8 +361,8 @@ export function CardList({ deckId }: CardListProps) {
                     disabled={disableEditDeleteButton}
                     className="px-2.5 py-1 text-xs font-medium text-center text-yellow-700 bg-yellow-100 rounded hover:bg-yellow-200 focus:ring-4 focus:outline-none focus:ring-yellow-300 dark:bg-yellow-900/50 dark:text-yellow-300 dark:hover:bg-yellow-800/50 dark:focus:ring-yellow-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {' '}
-                    Edit{' '}
+                    {" "}
+                    Edit{" "}
                   </button>
                   <button
                     type="button"
@@ -383,16 +370,16 @@ export function CardList({ deckId }: CardListProps) {
                     disabled={disableEditDeleteButton}
                     className="px-2.5 py-1 text-xs font-medium text-center text-red-700 bg-red-100 rounded hover:bg-red-200 focus:ring-4 focus:outline-none focus:ring-red-300 dark:bg-red-900/50 dark:text-red-300 dark:hover:bg-red-800/50 dark:focus:ring-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {' '}
-                    {isDeleting ? '...' : 'Delete'}{' '}
+                    {" "}
+                    {isDeleting ? "..." : "Delete"}{" "}
                   </button>
                 </div>
               </div>
               {/* SRS Info */}
               <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-1">
-                {' '}
+                {" "}
                 Next: {new Date(card.nextReviewAt).toLocaleDateString()} (I:
-                {card.interval}, EF:{card.easeFactor.toFixed(1)}){' '}
+                {card.interval}, EF:{card.easeFactor.toFixed(1)}){" "}
               </div>
             </li>
           );
@@ -407,22 +394,22 @@ export function CardList({ deckId }: CardListProps) {
             disabled={!pagination._links.previous || isFetching}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
           >
-            {' '}
-            Previous{' '}
+            {" "}
+            Previous{" "}
           </button>
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            {' '}
-            Page {Math.floor(offset / ITEMS_PER_PAGE) + 1} /{' '}
+            {" "}
+            Page {Math.floor(offset / ITEMS_PER_PAGE) + 1} /{" "}
             {Math.ceil(pagination.totalItems / ITEMS_PER_PAGE)} (
-            {pagination.totalItems} items){' '}
+            {pagination.totalItems} items){" "}
           </span>
           <button
             onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
             disabled={!pagination._links.next || isFetching}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
           >
-            {' '}
-            Next{' '}
+            {" "}
+            Next{" "}
           </button>
         </div>
       )}
@@ -440,7 +427,7 @@ export function CardList({ deckId }: CardListProps) {
             cancelText="Cancel"
             isConfirming={deleteCardMutation.isPending}
           />,
-          document.body
+          document.body,
         )}
       {isMounted &&
         editingCard &&
@@ -448,18 +435,15 @@ export function CardList({ deckId }: CardListProps) {
           <CardEditModal
             isOpen={isEditModalOpen}
             onOpenChange={setIsEditModalOpen}
-            card={editingCard} // ★ ここで渡す型と CardEditModal 側の型が合っているか注意 ★
+            card={editingCard}
             deckId={deckId}
             onSuccess={() => {
               setIsEditModalOpen(false);
               setEditingCard(null);
             }}
           />,
-          document.body
+          document.body,
         )}
     </div>
   );
 }
-
-// Optional: Re-export Card type alias if needed by parent components
-// export type { Card };

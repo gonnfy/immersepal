@@ -1,4 +1,3 @@
-// src/app/[locale]/page.tsx (ボタン/リンク分離版)
 "use client";
 
 import { useEffect } from "react";
@@ -20,7 +19,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!isLoading && user) {
       console.log("User is already logged in, redirecting to /decks...");
-      router.push(`/${locale}/decks`);
+      router.push(`decks`);
     }
   }, [user, isLoading, router, locale]);
 
@@ -42,7 +41,6 @@ export default function HomePage() {
           {t("subtitle")}
         </p>
 
-        {/* ★★★ このdivブロックを修正 ★★★ */}
         <div className="mt-10 flex flex-col items-center justify-center gap-y-4">
           {/* プライマリーボタン (サインアップ) */}
           <Link
@@ -62,7 +60,6 @@ export default function HomePage() {
             </Link>
           </p>
         </div>
-        {/* ★★★ 修正ここまで ★★★ */}
       </div>
     </main>
   );

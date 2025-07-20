@@ -1,4 +1,3 @@
-// src/app/[locale]/(app)/(main)/decks/page.tsx (エラーハンドリング表示強化 + フォーマット修正版)
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -8,50 +7,54 @@ import { useDeleteDeck } from "@/hooks/useDeckMutations";
 import { DeckCreateForm } from "@/components/features/DeckCreateForm";
 import { DeckEditModal } from "@/components/features/DeckEditModal";
 import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
-import { type DeckApiResponse } from "@/types"; // Import types
-import Link from "next/link";
+import { type DeckApiResponse } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "@/i18n/navigation";
 
-function DecksPage() {
-  const { isLoading: authLoading } = useAuth(); // user も取得しておく (デバッグ用ログなど)
+const Spinner = () => (
+  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+);
 
+export default function DecksPage() {
+  const _router = useRouter();
+  const { isLoading: authLoading } = useAuth();
   const ITEMS_PER_PAGE = 10;
   const [offset, setOffset] = useState(0);
 
-  // useDecks フック: デッキ一覧を取得
   const {
     decks,
     pagination,
-    isLoading: decksIsLoading, // 初期ロード中か
-    isFetching: decksIsFetching, // データ取得中か (ページ移動時など)
-    error: decksError, // デッキ取得時のエラー
+    isLoading: decksIsLoading,
+    isFetching: decksIsFetching,
+    error: decksError,
   } = useDecks({
     offset: offset,
     limit: ITEMS_PER_PAGE,
   });
 
-  // useDeleteDeck フック: デッキ削除処理
   const {
     mutate: deleteDeckMutate,
-    isPending: isDeletingDeck, // 削除処理中か
-    error: deleteDeckError, // デッキ削除時のエラー
+    isPending: isDeletingDeck,
+    error: deleteDeckError,
   } = useDeleteDeck();
 
-  // --- Component State ---
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [deckToDelete, setDeckToDelete] = useState<DeckApiResponse | null>(
     null,
   );
   const [editingDeck, setEditingDeck] = useState<DeckApiResponse | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isMounted, setIsMounted] = useState(false); // Portal 用
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Portal マウント用 Effect
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // --- Event Handlers ---
+  const handleEditClick = (deck: DeckApiResponse) => {
+    setEditingDeck(deck);
+    setIsEditModalOpen(true);
+  };
+
   const handleDeleteClick = (deck: DeckApiResponse) => {
     setDeckToDelete(deck);
     setIsConfirmOpen(true);
@@ -65,193 +68,137 @@ function DecksPage() {
     }
   };
 
-  const handleEditClick = (deck: DeckApiResponse) => {
-    setEditingDeck(deck);
-    setIsEditModalOpen(true);
-  };
+  const isLoading = authLoading || (decksIsLoading && !pagination);
 
-  // --- Helper Components ---
-  const Spinner = () => (
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>
-  );
-
-  // --- Render Logic ---
-
-  // 全体のローディング状態 (認証情報ロード中 または 初回デッキデータロード中)
-  const isLoading = authLoading || (decksIsLoading && !pagination); // pagination がまだ無い場合を初回ロードとする
-
-  // 初回ロード中はスピナー表示
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <Spinner />
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-gray-900"></div>
       </div>
     );
   }
 
-  // ★ デッキ取得エラーが発生した場合の表示 ★
-  if (!decksIsLoading && decksError) {
+  if (decksError) {
     return (
       <div className="container mx-auto p-4">
-        <h1 className="text-3xl font-bold mb-6 text-red-600">
-          Error Loading Decks
-        </h1>
-        <div
-          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
-          role="alert"
-        >
-          <strong className="font-bold">Failed to load your decks.</strong>
-          <span className="block sm:inline ml-2">
-            {decksError instanceof Error
-              ? decksError.message
-              : "An unknown error occurred."}
-          </span>
-          <p className="text-sm mt-2">
-            Please try refreshing the page. If the problem persists, contact
-            support.
-          </p>
-          {/* 認証エラー(401)や権限エラー(403)の場合、ログインページへのリンクなどを追加しても良い */}
-        </div>
+        <h2 className="text-2xl font-bold text-red-600">Error Loading Decks</h2>
+        <p className="text-gray-500">{decksError.message}</p>
       </div>
     );
   }
 
-  // 正常系のレンダリング
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6">My Decks</h1>
-      {/* デバッグ用: ログインユーザーID表示 */}
-      {/* <p className="text-xs text-gray-500 mb-4">Logged in as: {user?.id ?? 'No user'}</p> */}
+    <div className="container mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+      <h1 className="text-3xl font-bold">My Decks</h1>
 
-      {/* デッキ作成フォーム */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4">Create New Deck</h2>
-        <DeckCreateForm
-          onSuccess={() => console.log("Deck created callback!")}
-        />
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold">Create New Deck</h2>
+        <DeckCreateForm onSuccess={() => console.log("Deck created!")} />
       </div>
 
-      <h2 className="text-2xl font-semibold mb-4">Existing Decks</h2>
+      <hr />
 
-      {/* デッキ一覧 */}
-      {decks && ( // decks が存在する（エラーではない）場合
-        <>
-          {decks.length === 0 &&
-            offset === 0 &&
-            !decksIsFetching && ( // 初回ロードでデッキがない場合
-              <p className="text-gray-500 dark:text-gray-400">
-                You haven&apos;t created any decks yet.
-              </p>
-            )}
-          {decks.length > 0 && ( // デッキが存在する場合
-            <ul className="space-y-3 mb-6">
-              {decks.map((deck: DeckApiResponse) => (
-                <li
-                  key={deck.id}
-                  className="p-4 border rounded-md shadow-sm bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700"
-                >
-                  <div className="flex justify-between items-center">
-                    <Link
-                      href={`/decks/${deck.id}`}
-                      className="text-lg font-medium hover:underline"
-                    >
-                      {deck.name}
-                    </Link>
-                    <div className="space-x-2 flex-shrink-0">
-                      <Link
-                        href={`/decks/${deck.id}`}
-                        className="text-blue-500 hover:underline text-sm"
-                      >
-                        View
-                      </Link>
-                      <button
-                        type="button" // Ensure type="button"
-                        className="text-yellow-500 hover:underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => handleEditClick(deck)}
-                        disabled={isDeletingDeck || decksIsFetching} // データ取得中や削除中も無効化
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button" // Ensure type="button"
-                        className="text-red-500 hover:underline text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => handleDeleteClick(deck)}
-                        disabled={isDeletingDeck || decksIsFetching} // データ取得中や他の削除処理中も無効化
-                      >
-                        {isDeletingDeck && deckToDelete?.id === deck.id
-                          ? "Deleting..."
-                          : "Delete"}
-                      </button>
-                    </div>
-                  </div>
-                  {deck.description && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      {deck.description}
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold">Existing Decks</h2>
+
+        {decks && decks.length > 0 ? (
+          <ul className="space-y-4">
+            {decks.map((deck) => (
+              <li
+                key={deck.id}
+                className="p-4 bg-white rounded-lg shadow-md border cursor-pointer hover:shadow-lg transition-shadow"
+                onClick={() => _router.push(`/decks/${deck.id}`)}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="space-y-2">
+                    <h2 className="text-xl font-bold">{deck.name}</h2>
+                    <p className="text-gray-600">
+                      {deck.description || "No description provided."}
                     </p>
-                  )}
-                  <p className="text-xs text-gray-400 mt-1">
-                    Cards: {deck.cardCount ?? 0}
-                  </p>{" "}
-                  {/* カード数表示 */}
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-
-      {/* データ取得中のスピナー表示 (初回ロード後) */}
-      {decksIsFetching && !decksIsLoading && (
-        <div className="flex justify-center items-center mt-4">
-          <Spinner /> <span className="ml-2">Loading decks...</span>
-        </div>
-      )}
-
-      {/* ページネーション */}
-      {!isLoading &&
-        !decksError &&
-        pagination &&
-        pagination.totalItems > ITEMS_PER_PAGE && (
-          <div className="mt-6 flex items-center justify-center space-x-4">
-            <button
-              type="button" // Ensure type="button"
-              onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
-              disabled={
-                !pagination._links.previous || decksIsFetching || isDeletingDeck
-              } // 条件追加
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Previous
-            </button>
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              {`Showing ${pagination.totalItems > 0 ? offset + 1 : 0} - ${Math.min(pagination.totalItems, offset + ITEMS_PER_PAGE)} of ${pagination.totalItems}`}
-            </span>
-            <button
-              type="button" // Ensure type="button"
-              onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
-              disabled={
-                !pagination._links.next || decksIsFetching || isDeletingDeck
-              } // 条件追加
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Next
-            </button>
-          </div>
+                  </div>
+                  <div className="flex space-x-2 flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditClick(deck);
+                      }}
+                      disabled={isDeletingDeck || decksIsFetching}
+                      className="px-3 py-1 text-sm font-medium text-yellow-800 bg-yellow-100 rounded-md hover:bg-yellow-200 disabled:opacity-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(deck);
+                      }}
+                      disabled={isDeletingDeck || decksIsFetching}
+                      className="px-3 py-1 text-sm font-medium text-red-800 bg-red-100 rounded-md hover:bg-red-200 disabled:opacity-50 flex items-center space-x-1"
+                    >
+                      {isDeletingDeck && deckToDelete?.id === deck.id ? (
+                        <>
+                          <Spinner />
+                          <span>Deleting...</span>
+                        </>
+                      ) : (
+                        <span>Delete</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="text-right text-xs text-gray-400 mt-2">
+                  <span>Cards: {deck.cardCount ?? 0}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-gray-500 text-center py-4">
+            You haven&apos;t created any decks yet.
+          </p>
         )}
 
-      {/* ★ デッキ削除エラー表示 ★ */}
-      {deleteDeckError && (
-        <div
-          className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md"
-          role="alert"
-        >
-          <p className="font-semibold">Error Deleting Deck</p>
-          <p>{deleteDeckError.message}</p>
-          {/* 必要なら詳細情報を表示 */}
+        {decksIsFetching && (
+          <div className="flex justify-center p-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        )}
+      </div>
+
+      {pagination && pagination.totalItems > ITEMS_PER_PAGE && (
+        <div className="flex justify-center items-center space-x-3">
+          <button
+            disabled={
+              !pagination._links.previous || decksIsFetching || isDeletingDeck
+            }
+            onClick={() => setOffset(Math.max(0, offset - ITEMS_PER_PAGE))}
+            className="px-4 py-2 text-sm bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <p className="text-sm text-gray-500">
+            {`Showing ${pagination.totalItems > 0 ? offset + 1 : 0} - ${Math.min(
+              pagination.totalItems,
+              offset + ITEMS_PER_PAGE,
+            )} of ${pagination.totalItems}`}
+          </p>
+          <button
+            disabled={
+              !pagination._links.next || decksIsFetching || isDeletingDeck
+            }
+            onClick={() => setOffset(offset + ITEMS_PER_PAGE)}
+            className="px-4 py-2 text-sm bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50"
+          >
+            Next
+          </button>
         </div>
       )}
 
-      {/* --- Modals (変更なし) --- */}
+      {deleteDeckError && (
+        <p className="text-red-500 text-center">{deleteDeckError.message}</p>
+      )}
+
+      {/* --- Modals --- */}
       {isMounted &&
         deckToDelete &&
         createPortal(
@@ -261,12 +208,11 @@ function DecksPage() {
             onConfirm={handleConfirmDelete}
             title="Delete Deck"
             description={`Are you sure you want to delete "${deckToDelete.name}"? This action cannot be undone.`}
-            confirmText="Delete"
-            cancelText="Cancel"
             isConfirming={isDeletingDeck}
           />,
           document.body,
         )}
+
       {isMounted &&
         editingDeck &&
         createPortal(
@@ -277,7 +223,6 @@ function DecksPage() {
             onSuccess={() => {
               setIsEditModalOpen(false);
               setEditingDeck(null);
-              console.log("Deck update successful, modal closed.");
             }}
           />,
           document.body,
@@ -285,5 +230,3 @@ function DecksPage() {
     </div>
   );
 }
-
-export default DecksPage;

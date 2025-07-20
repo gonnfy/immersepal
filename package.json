@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
@@ -36,6 +37,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
     "@vitest/ui": "^3.1.1",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
@@ -47,6 +49,7 @@
     "prisma": "^6.6.0",
     "tailwindcss": "^4.1.4",
     "typescript": "^5",
+    "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.1.1"
   }
 }

@@ -1,7 +1,4 @@
-/* src/app/globals.css (テスト用 - @tailwind 以外をコメントアウト) */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* --- 以下を一時的にコメントアウト --- */
 /*

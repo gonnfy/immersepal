@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useForm, SubmitHandler } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { deckUpdateSchema, DeckUpdatePayload } from 'src/lib/zod'; // Corrected path
-import { useUpdateDeck, ApiError } from 'src/hooks/useDeckMutations'; // Corrected path
-import type { DeckApiResponse } from 'src/types'; // Corrected path (assuming index.ts exports it)
-import type { AppError } from 'src/lib/errors'; // Corrected path
-import { AuthError } from '@supabase/supabase-js';
+import React, { useState, useEffect } from "react";
+import { useForm, SubmitHandler } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { deckUpdateSchema, DeckUpdatePayload } from "src/lib/zod";
+import { useUpdateDeck, ApiError } from "src/hooks/useDeckMutations";
+import type { DeckApiResponse } from "src/types";
+import type { AppError } from "src/lib/errors";
+import { AuthError } from "@supabase/supabase-js";
 
 interface DeckEditModalProps {
   isOpen: boolean;
@@ -31,19 +31,18 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
   } = useForm<DeckUpdatePayload>({
     resolver: zodResolver(deckUpdateSchema),
     defaultValues: {
-      name: '',
-      description: '',
+      name: "",
+      description: "",
     },
   });
 
-  // Reset form when modal opens or the deck data changes
   useEffect(() => {
     if (isOpen && deck) {
       reset({
         name: deck.name,
-        description: deck.description ?? '', // Handle null description
+        description: deck.description ?? "",
       });
-      setApiError(null); // Clear previous errors
+      setApiError(null);
     }
     // Optional: Clear form when modal closes (uncomment if needed)
     // if (!isOpen) {
@@ -53,22 +52,19 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
   }, [isOpen, deck, reset]);
 
   const handleSuccess = (updatedDeck: DeckApiResponse) => {
-    console.log('Deck updated successfully:', updatedDeck);
+    console.log("Deck updated successfully:", updatedDeck);
     setApiError(null);
     onSuccess?.();
     onOpenChange(false);
   };
 
   const handleError = (error: ApiError | AuthError | AppError) => {
-    // Include AppError if needed
-    console.error('Error updating deck:', error);
-    // Check if error has a message property before accessing it
+    console.error("Error updating deck:", error);
     const message =
-      'message' in error ? error.message : 'An unexpected error occurred.';
+      "message" in error ? error.message : "An unexpected error occurred.";
     setApiError(message);
   };
 
-  // Setup mutation with callbacks
   const {
     mutate: updateDeckMutate,
     isPending: updateIsPending,
@@ -77,29 +73,27 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
 
   const onSubmit: SubmitHandler<DeckUpdatePayload> = (data) => {
     if (!deck) {
-      setApiError('Error: No deck selected for editing.');
+      setApiError("Error: No deck selected for editing.");
       return;
     }
 
-    // Convert empty string description back to null if necessary for API/DB
     const dataToSubmit: DeckUpdatePayload = {
       ...data,
-      description: data.description === '' ? null : data.description,
+      description: data.description === "" ? null : data.description,
     };
 
-    // Optional: Only submit if there are actual changes
     const hasChanges =
       dataToSubmit.name !== deck.name ||
       dataToSubmit.description !== deck.description;
     if (!hasChanges) {
-      onOpenChange(false); // Close if no changes
-      return;
+      onOpenChange(false);
+      return; // Return early if no changes
     }
 
-    setApiError(null); // Clear previous errors before submitting
+    setApiError(null);
     updateDeckMutate(
       { deckId: deck.id, data: dataToSubmit },
-      { onSuccess: handleSuccess, onError: handleError } // Pass callbacks here
+      { onSuccess: handleSuccess, onError: handleError },
     );
   };
 
@@ -112,8 +106,8 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
   const isProcessing = isSubmitting || updateIsPending;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-2xl relative">
         {/* Close button */}
         <button
           onClick={() => onOpenChange(false)}
@@ -151,13 +145,13 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
             <input
               id="deck-name"
               type="text"
-              {...register('name')}
+              {...register("name")}
               className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
                 errors.name
-                  ? 'border-red-500'
-                  : 'border-gray-300 dark:border-gray-600'
+                  ? "border-red-500"
+                  : "border-gray-300 dark:border-gray-600"
               }`}
-              aria-invalid={errors.name ? 'true' : 'false'}
+              aria-invalid={errors.name ? "true" : "false"}
             />
             {errors.name && (
               <p
@@ -179,13 +173,13 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
             <textarea
               id="deck-description"
               rows={3}
-              {...register('description')}
+              {...register("description")}
               className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
                 errors.description
-                  ? 'border-red-500'
-                  : 'border-gray-300 dark:border-gray-600'
+                  ? "border-red-500"
+                  : "border-gray-300 dark:border-gray-600"
               }`}
-              aria-invalid={errors.description ? 'true' : 'false'}
+              aria-invalid={errors.description ? "true" : "false"}
             />
             {errors.description && (
               <p
@@ -213,9 +207,9 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
               role="alert"
             >
               <p className="text-sm">
-                {'message' in mutationError
+                {"message" in mutationError
                   ? mutationError.message
-                  : 'An unexpected error occurred during submission.'}
+                  : "An unexpected error occurred during submission."}
               </p>
             </div>
           )}
@@ -233,12 +227,12 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
               type="submit"
               className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
                 isProcessing
-                  ? 'bg-indigo-400 cursor-not-allowed dark:bg-indigo-700'
-                  : 'bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600'
+                  ? "bg-indigo-400 cursor-not-allowed dark:bg-indigo-700"
+                  : "bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
               }`}
               disabled={isProcessing}
             >
-              {isProcessing ? 'Saving...' : 'Save Changes'}
+              {isProcessing ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </form>

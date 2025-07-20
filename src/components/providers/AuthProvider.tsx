@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.log(
               `AuthProvider: User initially signed in and on public path "<span class="math-inline">\{currentFullPath\}"\. Redirecting to /</span>{locale}/decks`,
             );
-            router.push(`/${locale}/decks`);
+            router.push(`/decks`);
           }
         }
       })

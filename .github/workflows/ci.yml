@@ -4,9 +4,17 @@ name: CI Checks (Bun)
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
-    branches: [main]
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
 
 jobs:
@@ -31,6 +39,8 @@ jobs:
       - name: Run ESLint
         run: bun run lint
 
+      - name: Run Tests
+        run: bun run test
+
       - name: Run Next.js Build
-        # envで設定した変数がこのステップで使われます
         run: bun run build
