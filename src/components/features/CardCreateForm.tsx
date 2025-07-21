@@ -4,15 +4,13 @@ import React, { useState } from "react";
 import { useForm, Controller, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { cardCreateSchema } from "@/lib/zod";
 import { useCreateCard } from "@/hooks/useCardMutations";
+import { ApiError } from "@/hooks/useDeckMutations";
 import { useTranslations } from "next-intl";
 import { useTranslateText } from "@/hooks/useTranslateText";
 
-const cardSchema = z.object({
-  front: z.string().min(1, "Front text cannot be empty"),
-  back: z.string().min(1, "Back text cannot be empty"),
-});
-type CardFormData = z.infer<typeof cardSchema>;
+type CardFormData = z.infer<typeof cardCreateSchema>;
 
 interface CardCreateFormProps {
   deckId: string;
@@ -33,7 +31,7 @@ export const CardCreateForm: React.FC<CardCreateFormProps> = ({
     getValues,
     watch,
   } = useForm<CardFormData>({
-    resolver: zodResolver(cardSchema),
+    resolver: zodResolver(cardCreateSchema),
     defaultValues: { front: "", back: "" },
   });
 
@@ -81,6 +79,23 @@ export const CardCreateForm: React.FC<CardCreateFormProps> = ({
   const onSubmit: SubmitHandler<CardFormData> = (data) => {
     createCard(data);
   };
+
+  // Zodのエラー詳細を保持するための型を定義
+  type FieldErrors = {
+    [key: string]: string[] | undefined;
+  };
+
+  // APIエラーから特定フィールドのエラーメッセージを取得するヘルパー
+  const getApiError = (fieldName: "front" | "back"): string | undefined => {
+    if (createError && createError instanceof ApiError && createError.details) {
+      const details = createError.details as { fieldErrors?: FieldErrors };
+      return details.fieldErrors?.[fieldName]?.[0];
+    }
+    return undefined;
+  };
+
+  const apiFrontError = getApiError("front");
+  const apiBackError = getApiError("back");
 
   const handleTranslateClick = () => {
     const frontValue = getValues("front");
@@ -132,8 +147,12 @@ export const CardCreateForm: React.FC<CardCreateFormProps> = ({
         />
         {errors.front && (
           <p className="mt-1 text-sm text-red-600" role="alert">
-            {" "}
-            {errors.front.message}{" "}
+            {errors.front?.message}
+          </p>
+        )}
+        {apiFrontError && (
+          <p className="mt-1 text-sm text-red-600" role="alert">
+            {apiFrontError}
           </p>
         )}
 
@@ -190,19 +209,22 @@ export const CardCreateForm: React.FC<CardCreateFormProps> = ({
         )}
         {errors.back && !translationError && (
           <p className="mt-1 text-sm text-red-600" role="alert">
-            {" "}
-            {errors.back.message}{" "}
+            {errors.back?.message}
+          </p>
+        )}
+        {apiBackError && (
+          <p className="mt-1 text-sm text-red-600" role="alert">
+            {apiBackError}
           </p>
         )}
       </div>
 
-      {createError && (
+      {createError && !apiFrontError && !apiBackError && (
         <div
           className="mt-2 p-2 border border-red-300 bg-red-50 dark:bg-red-900/30 rounded-md"
           role="alert"
         >
           <p className="text-sm text-red-700 dark:text-red-300">
-            {/* Consider a more specific error message or use createError.message */}
             {t?.("creationError", { message: createError.message }) ||
               `Error creating card: ${createError.message}`}
           </p>

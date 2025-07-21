@@ -107,7 +107,7 @@
 
 ```typescript
 // src/types/api.types.ts (抜粋・更新版)
-import { AiContentType } from '@prisma/client'; // PrismaからEnumをインポート
+import { AiContentType } from "@prisma/client"; // PrismaからEnumをインポート
 
 // AICardContent の API レスポンス型
 export interface AICardContentApiResponse {
@@ -229,10 +229,10 @@ Next.js 15 (およびそれ以前の準備バージョン) では、パフォー
 ```typescript
 // src/app/[locale]/(api)/api/decks/[deckId]/route.ts (GETハンドラの例)
 
-import { NextResponse } from 'next/server';
-import { getServerUserId } from '@/lib/auth';
-import { getDeckById } from '@/services/deck.service';
-import { handleApiError } from '@/lib/errors';
+import { NextResponse } from "next/server";
+import { getServerUserId } from "@/lib/auth";
+import { getDeckById } from "@/services/deck.service";
+import { handleApiError } from "@/lib/errors";
 
 // context の型を定義 (例)
 type Context = {
@@ -252,7 +252,7 @@ export async function GET(request: Request, context: Context) {
     const userId = await getServerUserId();
     if (!userId) {
       // ... 認証エラー処理 ...
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const deckData = await getDeckById(userId, deckId);
@@ -402,7 +402,7 @@ erDiagram
     StudyLog {
         String id PK "CUID"
         DateTime reviewedAt
-        StudyRating rating "Enum"
+        AcquisitionRating rating "Enum"
         Int previousInterval
         Float previousEaseFactor
         Int newInterval
@@ -421,7 +421,7 @@ erDiagram
         AUDIO_TRANSLATION
     }
 
-    enum StudyRating {
+    enum AcquisitionRating {
         AGAIN
         HARD
         GOOD

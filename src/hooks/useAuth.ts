@@ -3,11 +3,9 @@ import { AuthError, User, Session } from "@supabase/supabase-js";
 import { useAuthContext } from "@/components/providers/AuthProvider";
 
 interface AuthHookValue {
-  // Auth state from context
   session: Session | null;
   user: User | null;
   isLoading: boolean;
-  // Auth functions
   signUp: (
     email: string,
     password: string,

@@ -5827,12 +5827,12 @@ export const deckCreateSchema = z.object({
 export type DeckCreatePayload = z.infer<typeof deckCreateSchema>;
 
 // --- 他のスキーマ (例: 学習結果更新用) ---
-export const reviewResultSchema = z.object({
+export const cardRatingSchema = z.object({
   cardId: z.string().cuid(), // cuid形式を期待する場合
   rating: z.enum(['AGAIN', 'HARD', 'GOOD', 'EASY']), // Enumの値と一致
 });
 
-export type ReviewResultPayload = z.infer<typeof reviewResultSchema>;
+export type CardRatingPayload = z.infer<typeof cardRatingSchema>;
 
 // --- パスワード変更用スキーマ (例) ---
 export const changePasswordSchema = z.object({

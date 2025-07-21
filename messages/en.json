@@ -37,7 +37,7 @@
   "SignUpPage": {
     "title": "Sign Up",
     "emailPlaceholder": "Email",
-    "passwordPlaceholder": "Password (min. 6 characters)",
+    "passwordPlaceholder": "Password (min. 8 characters)",
     "button": "Sign Up",
     "loadingButton": "Signing Up...",
     "successMessage": "Sign up successful! Please check your email for verification.",

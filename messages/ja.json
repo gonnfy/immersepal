@@ -37,7 +37,7 @@
   "SignUpPage": {
     "title": "サインアップ",
     "emailPlaceholder": "メールアドレス",
-    "passwordPlaceholder": "パスワード（6文字以上）",
+    "passwordPlaceholder": "パスワード（8文字以上）",
     "button": "サインアップ",
     "loadingButton": "登録中...",
     "successMessage": "登録が完了しました！確認用のメールをご確認ください。",
