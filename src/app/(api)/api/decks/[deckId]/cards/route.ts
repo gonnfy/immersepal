@@ -1,50 +1,47 @@
-// src/app/[locale]/(api)/api/decks/[deckId]/cards/route.ts (修正後の完全なコード)
+import { NextResponse } from "next/server";
+import { z, ZodError } from "zod";
+import { createCard, getCardsByDeckId } from "@/services/card.service";
+import {
+  handleApiError,
+  AppError,
+  ERROR_CODES,
+  ValidationError,
+} from "@/lib/errors";
+import { cardCreateSchema } from "@/lib/zod";
+import { getServerUserId } from "@/lib/auth";
 
-import { NextResponse } from 'next/server';
-import { z, ZodError } from 'zod'; // Import ZodError
-import { createCard, getCardsByDeckId } from '@/services/card.service';
-import { handleApiError, AppError, ERROR_CODES } from '@/lib/errors'; // Import AppError and ERROR_CODES
-import { getServerUserId } from '@/lib/auth';
-
-// Define the expected request body schema
-const createCardSchema = z.object({
-  front: z.string().min(1, 'Front text cannot be empty'),
-  back: z.string().min(1, 'Back text cannot be empty'),
-});
-
-// --- POST Handler (カード作成) ---
+// カード作成
 export async function POST(
   request: Request,
-  context: { params: { deckId: string } }
+  context: { params: { deckId: string } },
 ) {
   try {
     const { deckId } = await context.params;
 
     if (!deckId) {
       return NextResponse.json(
-        { error: 'Deck ID is required' },
-        { status: 400 }
+        { error: "Deck ID is required" },
+        { status: 400 },
       );
     }
 
     const body = await request.json();
-    const validation = createCardSchema.safeParse(body);
+    const validation = cardCreateSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json(
-        { errors: validation.error.errors },
-        { status: 400 }
+      throw new ValidationError(
+        "Invalid request body for creating card.",
+        validation.error.flatten(),
       );
     }
 
     const { front, back } = validation.data;
 
-    // Get user ID
     const userId = await getServerUserId();
     if (!userId) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
+        { error: "Authentication required" },
+        { status: 401 },
       );
     }
 
@@ -53,83 +50,81 @@ export async function POST(
 
     return NextResponse.json(newCard, { status: 201 });
   } catch (error) {
-    // Use your centralized error handler
     return handleApiError(error);
   }
 }
 
-// --- GET Handler (カード一覧取得) ---
+// カード一覧取得
 export async function GET(
   request: Request,
-  context: { params: { deckId: string } }
+  context: { params: { deckId: string } },
 ) {
   try {
-    // --- 4.1. クエリパラメータの読み取りと検証 ---
     const { searchParams } = new URL(request.url);
 
     const querySchema = z.object({
-      limit: z.coerce.number().int().min(1).max(100).default(10), // デフォルト10, 最大100
-      offset: z.coerce.number().int().min(0).default(0), // デフォルト0
+      limit: z.coerce.number().int().min(1).max(100).default(10),
+      offset: z.coerce.number().int().min(0).default(0),
+      // "true" という文字列のみを true と解釈し、それ以外（"false"やnullなど）はfalseとして扱うように修正
+      forAcquisition: z
+        .preprocess((val) => val === "true", z.boolean())
+        .default(false),
     });
 
-    let validatedQuery: { limit: number; offset: number };
+    let validatedQuery: z.infer<typeof querySchema>;
     try {
       validatedQuery = querySchema.parse({
-        limit: searchParams.get('limit'),
-        offset: searchParams.get('offset'),
+        limit: searchParams.get("limit"),
+        offset: searchParams.get("offset"),
+        forAcquisition: searchParams.get("forAcquisition"),
       });
     } catch (err) {
       if (err instanceof ZodError) {
         return NextResponse.json(
           {
             error: ERROR_CODES.VALIDATION_ERROR,
-            message: 'Invalid query parameters for pagination.',
+            message: "Invalid query parameters for pagination.",
             details: err.flatten().fieldErrors,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
-      // Use handleApiError for other parsing errors
       return handleApiError(
         new AppError(
-          'Failed to parse pagination query parameters',
+          "Failed to parse pagination query parameters",
           400,
-          ERROR_CODES.VALIDATION_ERROR
-        )
+          ERROR_CODES.VALIDATION_ERROR,
+        ),
       );
     }
 
-    // --- ここまでで limit と offset が検証済み ---
-    const { limit, offset } = validatedQuery; // Define variables *after* validation
+    const { limit, offset, forAcquisition } = validatedQuery;
 
-    // ★★★ context.params を await してから deckId を取得 ★★★
     const { deckId } = await context.params;
 
     if (!deckId) {
       return NextResponse.json(
-        { error: 'Deck ID is required' },
-        { status: 400 }
+        { error: "Deck ID is required" },
+        { status: 400 },
       );
     }
 
-    // 1. Authentication/Authorization
     const userId = await getServerUserId();
     if (!userId) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
+        { error: "Authentication required" },
+        { status: 401 },
       );
     }
 
-    // 2. Call Service Function
-    // --- 4.2. Service 関数の呼び出し変更 ---
+    // Call Service Functioni
     const { data: cards, totalItems } = await getCardsByDeckId(userId, deckId, {
       limit,
       offset,
+      forAcquisition,
     });
 
-    // 3. Success Response
-    // --- 4.3. ページネーションレスポンスの構築 ---
+    // ページネーションレスポンス
     const baseUrl = `/api/decks/${deckId}/cards`;
     const selfLink = `${baseUrl}?offset=${offset}&limit=${limit}`;
     let nextLink: string | null = null;
@@ -156,10 +151,8 @@ export async function GET(
       },
     };
 
-    // --- 4.4. レスポンスの返却変更 ---
     return NextResponse.json(responseBody, { status: 200 });
   } catch (error) {
-    // 4. Error Handling
     return handleApiError(error);
   }
 }

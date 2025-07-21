@@ -1,115 +1,73 @@
-// prisma/schema.prisma (AICardContent 導入後の完全版)
-
-// --- 基本設定 ---
-datasource db {
-  provider     = "postgresql"
-  url          = env("DATABASE_URL")
-  relationMode = "prisma"
-  directUrl    = env("DIRECT_URL") // プーリング利用時のマイグレーション用
-}
-
 generator client {
   provider = "prisma-client-js"
   output   = "../node_modules/.prisma/client"
 }
 
-// --- Enum 定義 ---
-enum StudyRating {
-  AGAIN
-  HARD
-  GOOD
-  EASY
+datasource db {
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  directUrl    = env("DIRECT_URL")
+  relationMode = "foreignKeys"
 }
 
-// ↓↓↓ AIコンテンツの種類を示す Enum を【ここに追加】↓↓↓
-enum AiContentType {
-  EXPLANATION       // 解説テキスト
-  TRANSLATION       // 翻訳テキスト
-  AUDIO_PRIMARY     // Card.front (主要テキスト) の音声
-  AUDIO_SECONDARY   // Card.back (第2テキスト/答え) の音声
-  AUDIO_EXPLANATION // EXPLANATION コンテンツの音声
-  AUDIO_TRANSLATION // TRANSLATION コンテンツの音声
-}
-// ↑↑↑ 追加ここまで ↑↑↑
-
-// --- モデル定義 ---
-
-// ユーザーモデル (変更なし)
 model User {
   id        String     @id @db.Uuid
   email     String?    @unique
   name      String?
   avatarUrl String?
   createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  updatedAt DateTime   @default(now()) @updatedAt
   decks     Deck[]
   studyLogs StudyLog[]
 }
 
-// デッキモデル (変更なし)
 model Deck {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  userId      String    @db.Uuid
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   cards       Card[]
+
   @@unique([userId, name])
   @@index([userId])
 }
 
-// ↓↓↓ Card モデルを【以下のように修正】↓↓↓
 model Card {
-  id            String   @id @default(cuid())
-  front         String   @db.Text
-  back          String   @db.Text
+  id           String          @id @default(cuid())
+  front        String
+  back         String
+  interval     Int             @default(0)
+  easeFactor   Float           @default(2.5)
+  nextReviewAt DateTime        @default(now()) @db.Timestamptz(6)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deckId       String
+  deck         Deck            @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  studyLogs    StudyLog[]
+  aiContents   AICardContent[]
 
-
-  // --- SRSメタデータ (変更なし) ---
-  interval      Int      @default(0)
-  easeFactor    Float    @default(2.5)
-  nextReviewAt  DateTime @default(now()) @db.Timestamptz // 型を Timestamptz にするのを推奨
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // --- リレーション (deck, studyLogs は変更なし) ---
-  deckId        String
-  deck          Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
-  studyLogs     StudyLog[]
-
-  // ↓↓↓ AICardContent へのリレーションを【追加】↓↓↓
-  aiContents    AICardContent[]
-
-  // --- インデックス (変更なし) ---
   @@index([deckId])
   @@index([nextReviewAt])
 }
-// ↑↑↑ Card モデル修正ここまで ↑↑↑
 
-
-// ↓↓↓ AICardContent モデルを【ここに追加】↓↓↓
 model AICardContent {
-  id            String   @id @default(cuid())
-  cardId        String   // どのカードのコンテンツか (Cardへの参照)
-  card          Card     @relation(fields: [cardId], references: [id], onDelete: Cascade) // Cardとのリレーション
-  contentType   AiContentType // Enum: EXPLANATION か TRANSLATION か
-  language      String   // コンテンツの言語コード (e.g., 'en', 'ja')
-  content       String   @db.Text // 解説や翻訳のテキスト本体
+  id          String        @id @default(cuid())
+  cardId      String
+  contentType AiContentType
+  language    String
+  content     String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  card        Card          @relation(fields: [cardId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // 同じカードに同じ種類・同じ言語のコンテンツは原則1つ
   @@unique([cardId, contentType, language])
-  @@index([cardId]) // カードIDでの検索用
-  @@index([cardId, contentType]) // 特定タイプのコンテンツ取得用
+  @@index([cardId])
+  @@index([cardId, contentType])
 }
-// ↑↑↑ 追加ここまで ↑↑↑
 
-// 学習ログモデル (変更なし)
 model StudyLog {
   id                 String      @id @default(cuid())
   reviewedAt         DateTime    @default(now())
@@ -120,10 +78,27 @@ model StudyLog {
   newEaseFactor      Float
   nextReviewAt       DateTime
   userId             String      @db.Uuid
-  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   cardId             String
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   card               Card        @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([cardId])
   @@index([reviewedAt])
+}
+
+enum AiContentType {
+  EXPLANATION
+  TRANSLATION
+  AUDIO_PRIMARY
+  AUDIO_SECONDARY
+  AUDIO_EXPLANATION
+  AUDIO_TRANSLATION
+}
+
+enum StudyRating {
+  AGAIN
+  HARD
+  GOOD
+  EASY
 }

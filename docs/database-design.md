@@ -196,7 +196,7 @@ erDiagram
     StudyLog {
         String id PK "CUID"
         DateTime reviewedAt
-        StudyRating rating "Enum"
+        AcquisitionRating rating "Enum"
         Int previousInterval
         Float previousEaseFactor
         Int newInterval
@@ -215,7 +215,7 @@ erDiagram
         AUDIO_TRANSLATION
     }
 
-    enum StudyRating {
+    enum AcquisitionRating {
         AGAIN
         HARD
         GOOD

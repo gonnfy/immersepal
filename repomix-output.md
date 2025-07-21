@@ -3,20 +3,24 @@ This file is a merged representation of the entire codebase, combined into a sin
 # File Summary
 
 ## Purpose
+
 This file contains a packed representation of the entire repository's contents.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
 
 ## File Format
+
 The content is organized as follows:
+
 1. This summary section
 2. Repository information
 3. Directory structure
 4. Multiple file entries, each consisting of:
-  a. A header with the file path (## File: path/to/file)
-  b. The full contents of the file in a code block
+   a. A header with the file path (## File: path/to/file)
+   b. The full contents of the file in a code block
 
 ## Usage Guidelines
+
 - This file should be treated as read-only. Any changes should be made to the
   original repository files, not this packed version.
 - When processing this file, use the file path to distinguish
@@ -25,6 +29,7 @@ The content is organized as follows:
   the same level of security as you would the original repository.
 
 ## Notes
+
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
 - Files matching patterns in .gitignore are excluded
@@ -34,6 +39,7 @@ The content is organized as follows:
 ## Additional Info
 
 # Directory Structure
+
 ```
 app/
   (api)/
@@ -132,28 +138,29 @@ middleware.ts
 # Files
 
 ## File: app/(api)/api/cards/[cardId]/ai-contents/route.ts
+
 ```typescript
 // src/app/(api)/api/cards/[cardId]/ai-contents/route.ts (新規作成)
 
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { AiContentType } from '@prisma/client'; // Prisma Enum をインポート
-import { getServerUserId } from '@/lib/auth';
-import { saveAiContent } from '@/services/card.service'; // 作成したサービス関数
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { AiContentType } from "@prisma/client"; // Prisma Enum をインポート
+import { getServerUserId } from "@/lib/auth";
+import { saveAiContent } from "@/services/card.service"; // 作成したサービス関数
 import {
   handleApiError,
   ValidationError,
   AppError,
   AuthenticationError,
-} from '@/lib/errors'; // エラー型
-import { type Result } from '@/types';
-import { type AICardContent } from '@prisma/client';
+} from "@/lib/errors"; // エラー型
+import { type Result } from "@/types";
+import { type AICardContent } from "@prisma/client";
 
 // リクエストボディの Zod スキーマ定義
 const aiContentCreateApiSchema = z.object({
   contentType: z.nativeEnum(AiContentType), // 正しい Enum か検証
-  language: z.string().min(2, { message: 'Language code is required.' }),
-  content: z.string().min(1, { message: 'Content cannot be empty.' }),
+  language: z.string().min(2, { message: "Language code is required." }),
+  content: z.string().min(1, { message: "Content cannot be empty." }),
 });
 
 type AiContentCreateApiPayload = z.infer<typeof aiContentCreateApiSchema>;
@@ -182,7 +189,7 @@ export async function POST(request: Request, context: Context) {
     // Next.js の挙動に注意しつつ await を使用
     const { cardId } = await context.params;
     if (!cardId) {
-      throw new ValidationError('Card ID is missing in the URL path.');
+      throw new ValidationError("Card ID is missing in the URL path.");
     }
 
     // 3. リクエストボディのパースと検証
@@ -192,8 +199,8 @@ export async function POST(request: Request, context: Context) {
       const validation = aiContentCreateApiSchema.safeParse(rawBody);
       if (!validation.success) {
         throw new ValidationError(
-          'Invalid request body for saving AI content.',
-          validation.error.flatten()
+          "Invalid request body for saving AI content.",
+          validation.error.flatten(),
         );
       }
       payload = validation.data;
@@ -202,11 +209,11 @@ export async function POST(request: Request, context: Context) {
         throw e;
       }
       console.error(
-        'Error parsing/validating save AI content request body:',
-        e
+        "Error parsing/validating save AI content request body:",
+        e,
       );
       throw new ValidationError(
-        'Invalid JSON body or structure for saving AI content.'
+        "Invalid JSON body or structure for saving AI content.",
       );
     }
 
@@ -214,7 +221,7 @@ export async function POST(request: Request, context: Context) {
     const saveResult: Result<AICardContent, AppError> = await saveAiContent(
       userId,
       cardId,
-      payload // { contentType, language, content }
+      payload, // { contentType, language, content }
     );
 
     // 5. Result をチェック
@@ -234,13 +241,14 @@ export async function POST(request: Request, context: Context) {
 ```
 
 ## File: app/(api)/api/decks/[deckId]/cards/[cardId]/route.ts
+
 ```typescript
 // src/app/(api)/api/decks/[deckId]/cards/[cardId]/route.ts
-import { NextResponse } from 'next/server';
-import { getServerUserId } from '@/lib/auth';
-import { deleteCard } from '@/services/card.service';
+import { NextResponse } from "next/server";
+import { getServerUserId } from "@/lib/auth";
+import { deleteCard } from "@/services/card.service";
 // isAppError, ValidationError, AppError は handleApiError 等で必要になる可能性を考慮し残置。lint で不要と出たら削除。
-import { ERROR_CODES, handleApiError } from '@/lib/errors';
+import { ERROR_CODES, handleApiError } from "@/lib/errors";
 
 interface DeleteParams {
   deckId: string;
@@ -252,7 +260,7 @@ interface DeleteParams {
  */
 export async function DELETE(
   request: Request, // request object is not used but required by the signature
-  context: { params: DeleteParams }
+  context: { params: DeleteParams },
 ) {
   try {
     // 1. Authentication: Get user ID
@@ -261,9 +269,9 @@ export async function DELETE(
       return NextResponse.json(
         {
           error: ERROR_CODES.AUTHENTICATION_FAILED,
-          message: 'Authentication required.',
+          message: "Authentication required.",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -273,9 +281,9 @@ export async function DELETE(
       return NextResponse.json(
         {
           error: ERROR_CODES.VALIDATION_ERROR,
-          message: 'Missing deckId or cardId in URL.',
+          message: "Missing deckId or cardId in URL.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -291,8 +299,8 @@ export async function DELETE(
 }
 
 // --- Imports for PUT ---
-import { updateCard } from '@/services/card.service'; // Import the update service
-import { cardUpdateSchema, CardUpdatePayload } from '@/lib/zod'; // Import the validation schema and payload type
+import { updateCard } from "@/services/card.service"; // Import the update service
+import { cardUpdateSchema, CardUpdatePayload } from "@/lib/zod"; // Import the validation schema and payload type
 // import type { Result } from '@/types'; // ★ Removed unused import
 
 // --- Type for PUT context params (can reuse or define specifically) ---
@@ -313,9 +321,9 @@ export async function PUT(request: Request, context: { params: PutParams }) {
     return NextResponse.json(
       {
         error: ERROR_CODES.AUTHENTICATION_FAILED,
-        message: 'Authentication required.',
+        message: "Authentication required.",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -325,9 +333,9 @@ export async function PUT(request: Request, context: { params: PutParams }) {
     return NextResponse.json(
       {
         error: ERROR_CODES.VALIDATION_ERROR,
-        message: 'Missing deckId or cardId in URL.',
+        message: "Missing deckId or cardId in URL.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -338,8 +346,8 @@ export async function PUT(request: Request, context: { params: PutParams }) {
   } catch (_e) {
     // _e は使わないが、catch 節は必要 (Removed unused eslint-disable comment)
     return NextResponse.json(
-      { error: ERROR_CODES.VALIDATION_ERROR, message: 'Invalid JSON body.' },
-      { status: 400 }
+      { error: ERROR_CODES.VALIDATION_ERROR, message: "Invalid JSON body." },
+      { status: 400 },
     );
   }
 
@@ -349,10 +357,10 @@ export async function PUT(request: Request, context: { params: PutParams }) {
     return NextResponse.json(
       {
         error: ERROR_CODES.VALIDATION_ERROR,
-        message: 'Invalid input data.',
+        message: "Invalid input data.",
         details: validation.error.flatten().fieldErrors,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -372,33 +380,34 @@ export async function PUT(request: Request, context: { params: PutParams }) {
 ```
 
 ## File: app/(api)/api/decks/[deckId]/cards/route.ts
+
 ```typescript
 // src/app/[locale]/(api)/api/decks/[deckId]/cards/route.ts (修正後の完全なコード)
 
-import { NextResponse } from 'next/server';
-import { z, ZodError } from 'zod'; // Import ZodError
-import { createCard, getCardsByDeckId } from '@/services/card.service';
-import { handleApiError, AppError, ERROR_CODES } from '@/lib/errors'; // Import AppError and ERROR_CODES
-import { getServerUserId } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import { z, ZodError } from "zod"; // Import ZodError
+import { createCard, getCardsByDeckId } from "@/services/card.service";
+import { handleApiError, AppError, ERROR_CODES } from "@/lib/errors"; // Import AppError and ERROR_CODES
+import { getServerUserId } from "@/lib/auth";
 
 // Define the expected request body schema
 const createCardSchema = z.object({
-  front: z.string().min(1, 'Front text cannot be empty'),
-  back: z.string().min(1, 'Back text cannot be empty'),
+  front: z.string().min(1, "Front text cannot be empty"),
+  back: z.string().min(1, "Back text cannot be empty"),
 });
 
 // --- POST Handler (カード作成) ---
 export async function POST(
   request: Request,
-  context: { params: { deckId: string } }
+  context: { params: { deckId: string } },
 ) {
   try {
     const { deckId } = await context.params;
 
     if (!deckId) {
       return NextResponse.json(
-        { error: 'Deck ID is required' },
-        { status: 400 }
+        { error: "Deck ID is required" },
+        { status: 400 },
       );
     }
 
@@ -408,7 +417,7 @@ export async function POST(
     if (!validation.success) {
       return NextResponse.json(
         { errors: validation.error.errors },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -418,8 +427,8 @@ export async function POST(
     const userId = await getServerUserId();
     if (!userId) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
+        { error: "Authentication required" },
+        { status: 401 },
       );
     }
 
@@ -436,7 +445,7 @@ export async function POST(
 // --- GET Handler (カード一覧取得) ---
 export async function GET(
   request: Request,
-  context: { params: { deckId: string } }
+  context: { params: { deckId: string } },
 ) {
   try {
     // --- 4.1. クエリパラメータの読み取りと検証 ---
@@ -450,27 +459,27 @@ export async function GET(
     let validatedQuery: { limit: number; offset: number };
     try {
       validatedQuery = querySchema.parse({
-        limit: searchParams.get('limit'),
-        offset: searchParams.get('offset'),
+        limit: searchParams.get("limit"),
+        offset: searchParams.get("offset"),
       });
     } catch (err) {
       if (err instanceof ZodError) {
         return NextResponse.json(
           {
             error: ERROR_CODES.VALIDATION_ERROR,
-            message: 'Invalid query parameters for pagination.',
+            message: "Invalid query parameters for pagination.",
             details: err.flatten().fieldErrors,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
       // Use handleApiError for other parsing errors
       return handleApiError(
         new AppError(
-          'Failed to parse pagination query parameters',
+          "Failed to parse pagination query parameters",
           400,
-          ERROR_CODES.VALIDATION_ERROR
-        )
+          ERROR_CODES.VALIDATION_ERROR,
+        ),
       );
     }
 
@@ -482,8 +491,8 @@ export async function GET(
 
     if (!deckId) {
       return NextResponse.json(
-        { error: 'Deck ID is required' },
-        { status: 400 }
+        { error: "Deck ID is required" },
+        { status: 400 },
       );
     }
 
@@ -491,8 +500,8 @@ export async function GET(
     const userId = await getServerUserId();
     if (!userId) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
+        { error: "Authentication required" },
+        { status: 401 },
       );
     }
 
@@ -541,6 +550,7 @@ export async function GET(
 ```
 
 ## File: app/(api)/api/decks/[deckId]/route.ts
+
 ```typescript
 import { NextRequest, NextResponse } from "next/server";
 import { getServerUserId } from "@/lib/auth";
@@ -652,6 +662,7 @@ export async function DELETE(request: Request, context: Context) {
 ```
 
 ## File: app/(api)/api/decks/route.ts
+
 ```typescript
 import { NextRequest, NextResponse } from "next/server";
 import { getServerUserId } from "@/lib/auth";
@@ -734,6 +745,7 @@ export async function POST(request: Request) {
 ```
 
 ## File: app/(api)/api/test-explanation/route.ts
+
 ```typescript
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -796,19 +808,20 @@ export async function POST(request: Request) {
 ```
 
 ## File: app/(api)/api/test-translation/route.ts
+
 ```typescript
 // src/app/(api)/api/test-translation/route.ts (Result パターン対応版)
 
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { handleApiError, ValidationError } from '@/lib/errors';
-import { generateTranslation } from '@/services/ai.service'; // サービス関数 (Result を返す版)
-import { type Result } from '@/types';
-import { type AppError } from '@/lib/errors';
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { handleApiError, ValidationError } from "@/lib/errors";
+import { generateTranslation } from "@/services/ai.service"; // サービス関数 (Result を返す版)
+import { type Result } from "@/types";
+import { type AppError } from "@/lib/errors";
 
 // Zod スキーマ (変更なし)
 const testTranslationSchema = z.object({
-  text: z.string().min(1, 'Text to translate cannot be empty.'),
+  text: z.string().min(1, "Text to translate cannot be empty."),
   sourceLanguage: z
     .string()
     .min(2, 'Source language must be provided (e.g., "en" or "English").'),
@@ -828,8 +841,8 @@ export async function POST(request: Request) {
       const validation = testTranslationSchema.safeParse(rawBody);
       if (!validation.success) {
         throw new ValidationError(
-          'Invalid request body for translation.',
-          validation.error.flatten()
+          "Invalid request body for translation.",
+          validation.error.flatten(),
         );
       }
       payload = validation.data;
@@ -837,9 +850,9 @@ export async function POST(request: Request) {
       if (e instanceof ValidationError) {
         throw e;
       }
-      console.error('Error parsing or validating translation request body:', e);
+      console.error("Error parsing or validating translation request body:", e);
       throw new ValidationError(
-        'Invalid JSON body or structure for translation.'
+        "Invalid JSON body or structure for translation.",
       );
     }
 
@@ -868,15 +881,16 @@ export async function POST(request: Request) {
 ```
 
 ## File: app/(api)/api/test-tts/route.ts
+
 ```typescript
 // src/app/(api)/api/test-tts/route.ts
-import { NextResponse } from 'next/server';
-import { generateTtsAudio } from '@/services/ai.service'; // 作成した関数をインポート
-import { v4 as uuidv4 } from 'uuid'; // ユニークなファイル名生成用 (必要なら bun add uuid @types/uuid)
+import { NextResponse } from "next/server";
+import { generateTtsAudio } from "@/services/ai.service"; // 作成した関数をインポート
+import { v4 as uuidv4 } from "uuid"; // ユニークなファイル名生成用 (必要なら bun add uuid @types/uuid)
 
 export async function GET(_request: Request) {
   try {
-    const testText = 'こんにちは、これは音声合成のテストです。'; // 音声にしたいテキスト
+    const testText = "こんにちは、これは音声合成のテストです。"; // 音声にしたいテキスト
     // GCS 上でファイル名が重複しないように UUID やタイムスタンプを使う
     const testFilename = `test-audio-${uuidv4()}`; // 例: test-audio-xxxxxxxx-xxxx...
 
@@ -888,48 +902,49 @@ export async function GET(_request: Request) {
       return NextResponse.json({
         success: true,
         url: audioUrl,
-        message: 'TTS generated and uploaded successfully.',
+        message: "TTS generated and uploaded successfully.",
       });
     } else {
-      console.error('[Test API] Failed to generate audio URL.');
+      console.error("[Test API] Failed to generate audio URL.");
       return NextResponse.json(
-        { success: false, error: 'Failed to generate TTS audio URL.' },
-        { status: 500 }
+        { success: false, error: "Failed to generate TTS audio URL." },
+        { status: 500 },
       );
     }
   } catch (error) {
-    console.error('[Test API] Error occurred:', error);
+    console.error("[Test API] Error occurred:", error);
     return NextResponse.json(
       {
         success: false,
-        error: 'An unexpected error occurred during TTS test.',
+        error: "An unexpected error occurred during TTS test.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 ```
 
 ## File: app/(api)/api/translate/route.ts
+
 ```typescript
 // src/app/(api)/api/translate/route.ts (Result パターン対応版)
 
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { handleApiError, ValidationError } from '@/lib/errors'; // 必要なら AppError も
-import { generateTranslation } from '@/services/ai.service';
-import { type Result } from '@/types'; // Result 型をインポート
-import { type AppError } from '@/lib/errors'; // AppError 型もインポート
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { handleApiError, ValidationError } from "@/lib/errors"; // 必要なら AppError も
+import { generateTranslation } from "@/services/ai.service";
+import { type Result } from "@/types"; // Result 型をインポート
+import { type AppError } from "@/lib/errors"; // AppError 型もインポート
 
 // Zod スキーマ (変更なし)
 const translateApiSchema = z.object({
-  text: z.string().min(1, { message: 'Text to translate cannot be empty.' }),
+  text: z.string().min(1, { message: "Text to translate cannot be empty." }),
   sourceLanguage: z
     .string()
-    .min(2, { message: 'Source language is required.' }),
+    .min(2, { message: "Source language is required." }),
   targetLanguage: z
     .string()
-    .min(2, { message: 'Target language is required.' }),
+    .min(2, { message: "Target language is required." }),
 });
 
 type TranslateApiPayload = z.infer<typeof translateApiSchema>;
@@ -943,8 +958,8 @@ export async function POST(request: Request) {
       const validation = translateApiSchema.safeParse(rawBody);
       if (!validation.success) {
         throw new ValidationError(
-          'Invalid request body for translation.',
-          validation.error.flatten()
+          "Invalid request body for translation.",
+          validation.error.flatten(),
         );
       }
       payload = validation.data;
@@ -952,9 +967,9 @@ export async function POST(request: Request) {
       if (e instanceof ValidationError) {
         throw e;
       }
-      console.error('Error parsing/validating translation request body:', e);
+      console.error("Error parsing/validating translation request body:", e);
       throw new ValidationError(
-        'Invalid JSON body or structure for translation.'
+        "Invalid JSON body or structure for translation.",
       );
     }
 
@@ -965,7 +980,7 @@ export async function POST(request: Request) {
       await generateTranslation(
         payload.text,
         payload.sourceLanguage,
-        payload.targetLanguage
+        payload.targetLanguage,
       );
 
     // 3. Check the Result
@@ -973,7 +988,7 @@ export async function POST(request: Request) {
       // If not ok, handle the error using handleApiError
       console.warn(
         `Translation API failed for text "${payload.text}":`,
-        translationResult.error.message
+        translationResult.error.message,
       );
       return handleApiError(translationResult.error); // Pass the error from the Result
     }
@@ -993,34 +1008,35 @@ export async function POST(request: Request) {
 ```
 
 ## File: app/(api)/api/tts/signed-url/route.ts
+
 ```typescript
 // src/app/(api)/api/tts/signed-url/route.ts
 
-import { NextRequest, NextResponse } from 'next/server';
-import { Storage } from '@google-cloud/storage';
+import { NextRequest, NextResponse } from "next/server";
+import { Storage } from "@google-cloud/storage";
 import {
   handleApiError,
   ValidationError,
   ExternalApiError,
-} from '@/lib/errors';
+} from "@/lib/errors";
 
 // 注意: Storage クライアントと bucketName は ai.service.ts と重複初期化している状態。
 // 本来は共通の初期化処理を呼び出すか、シングルトンにするのが望ましい。
 let storage: Storage | null = null;
-let bucketName: string = '';
+let bucketName: string = "";
 try {
   storage = new Storage(); // GOOGLE_APPLICATION_CREDENTIALS が必要
-  bucketName = process.env.GCS_BUCKET_NAME || '';
+  bucketName = process.env.GCS_BUCKET_NAME || "";
   if (!bucketName) {
     console.error(
-      'GCS_BUCKET_NAME missing in environment for signed URL generation.'
+      "GCS_BUCKET_NAME missing in environment for signed URL generation.",
     );
     storage = null;
   }
 } catch (error) {
   console.error(
-    'Failed to initialize Storage client for signed URL generation.',
-    error
+    "Failed to initialize Storage client for signed URL generation.",
+    error,
   );
   storage = null;
 }
@@ -1033,34 +1049,34 @@ export async function GET(request: NextRequest) {
   if (!storage || !bucketName) {
     return handleApiError(
       new ExternalApiError(
-        'Storage client is not initialized or bucket name is missing.'
-      )
+        "Storage client is not initialized or bucket name is missing.",
+      ),
     );
   }
 
   try {
     const { searchParams } = new URL(request.url);
-    const gcsPath = searchParams.get('gcsPath');
+    const gcsPath = searchParams.get("gcsPath");
 
     // 1. 入力検証 (gcsPath が必須で、特定の形式か)
     if (
       !gcsPath ||
-      typeof gcsPath !== 'string' ||
-      !gcsPath.startsWith('tts-audio/')
+      typeof gcsPath !== "string" ||
+      !gcsPath.startsWith("tts-audio/")
     ) {
-      throw new ValidationError('Missing or invalid gcsPath query parameter.');
+      throw new ValidationError("Missing or invalid gcsPath query parameter.");
     }
     // パストラバーサル防止 (簡易チェック)
-    if (gcsPath.includes('..')) {
-      throw new ValidationError('Invalid characters in gcsPath.');
+    if (gcsPath.includes("..")) {
+      throw new ValidationError("Invalid characters in gcsPath.");
     }
 
     console.log(`[API /tts/signed-url] Request for path: ${gcsPath}`);
 
     // 2. 署名付き URL 生成 (有効期限は短め、例: 15分)
     const options = {
-      version: 'v4' as const,
-      action: 'read' as const,
+      version: "v4" as const,
+      action: "read" as const,
       expires: Date.now() + 15 * 60 * 1000, // 15 minutes
     };
 
@@ -1087,24 +1103,25 @@ export async function GET(request: NextRequest) {
 ```
 
 ## File: app/(api)/api/tts/route.ts
+
 ```typescript
 // src/app/(api)/api/tts/route.ts (Result<{ signedUrl, gcsPath }> 対応版)
 
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
 // ↓↓↓ AppError もインポート ↓↓↓
-import { handleApiError, ValidationError, AppError } from '@/lib/errors';
-import { generateTtsAudio } from '@/services/ai.service';
+import { handleApiError, ValidationError, AppError } from "@/lib/errors";
+import { generateTtsAudio } from "@/services/ai.service";
 // ↓↓↓ Result 型をインポート ↓↓↓
-import { type Result } from '@/types';
+import { type Result } from "@/types";
 
 // Zod スキーマ (language を必須に変更済み)
 const ttsApiSchema = z.object({
-  text: z.string().min(1, { message: 'Text for TTS cannot be empty.' }),
+  text: z.string().min(1, { message: "Text for TTS cannot be empty." }),
   language: z
     .string()
-    .min(2, { message: 'Language code is required (e.g., en-US, ja-JP).' }),
+    .min(2, { message: "Language code is required (e.g., en-US, ja-JP)." }),
 });
 
 type TtsApiPayload = z.infer<typeof ttsApiSchema>;
@@ -1123,8 +1140,8 @@ export async function POST(request: Request) {
       const validation = ttsApiSchema.safeParse(rawBody);
       if (!validation.success) {
         throw new ValidationError(
-          'Invalid request body for TTS.',
-          validation.error.flatten()
+          "Invalid request body for TTS.",
+          validation.error.flatten(),
         );
       }
       payload = validation.data;
@@ -1132,8 +1149,8 @@ export async function POST(request: Request) {
       if (e instanceof ValidationError) {
         throw e;
       }
-      console.error('Error parsing/validating TTS request body:', e);
-      throw new ValidationError('Invalid JSON body or structure for TTS.');
+      console.error("Error parsing/validating TTS request body:", e);
+      throw new ValidationError("Invalid JSON body or structure for TTS.");
     }
 
     // 2. Generate Unique Filename Base (変更なし)
@@ -1146,7 +1163,7 @@ export async function POST(request: Request) {
       await generateTtsAudio(
         payload.text,
         uniqueFilenameBase,
-        payload.language
+        payload.language,
       );
 
     // 4. Check the Result
@@ -1154,7 +1171,7 @@ export async function POST(request: Request) {
       // If service returned an error Result, handle it
       console.error(
         `TTS Service failed for text "${payload.text}":`,
-        ttsResult.error.message
+        ttsResult.error.message,
       );
       return handleApiError(ttsResult.error); // エラー Result を処理
     }
@@ -1177,6 +1194,7 @@ export async function POST(request: Request) {
 ```
 
 ## File: app/[locale]/(app)/(main)/decks/[deckId]/page.tsx
+
 ```typescript
 import { notFound } from 'next/navigation'; // Import notFound for 404 handling
 import { getServerUserId } from '@/lib/auth'; // Import function to get user ID
@@ -1308,6 +1326,7 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
 ```
 
 ## File: app/[locale]/(app)/(main)/decks/page.tsx
+
 ```typescript
 "use client";
 
@@ -1604,6 +1623,7 @@ export default DecksPage;
 ```
 
 ## File: app/[locale]/(app)/test/page.tsx
+
 ```typescript
 // src/app/[locale]/(app)/test/page.tsx
 'use client';
@@ -1658,6 +1678,7 @@ export default function DialogTestPage() {
 ```
 
 ## File: app/[locale]/(app)/layout.tsx
+
 ```typescript
 // src/app/[locale]/(app)/layout.tsx (params await + import path 修正版)
 import { redirect } from "next/navigation";
@@ -1740,6 +1761,7 @@ export default async function AuthenticatedLayout({
 ```
 
 ## File: app/[locale]/(auth)/login/page.tsx
+
 ```typescript
 "use client";
 
@@ -1836,6 +1858,7 @@ export default function LoginPage() {
 ```
 
 ## File: app/[locale]/(auth)/reset-password/page.tsx
+
 ```typescript
 "use client";
 
@@ -1927,6 +1950,7 @@ export default function ForgotPasswordPage() {
 ```
 
 ## File: app/[locale]/(auth)/signup/page.tsx
+
 ```typescript
 // src/app/[locale]/(app)/(auth)/signup/page.tsx
 'use client';
@@ -2017,6 +2041,7 @@ export default function SignUpPage() {
 ```
 
 ## File: app/[locale]/layout.tsx
+
 ```typescript
 // src/app/[locale]/layout.tsx (修正版 - ルートレイアウトが存在する場合)
 import type { ReactNode } from 'react';
@@ -2071,6 +2096,7 @@ export default async function LocaleLayout({
 ```
 
 ## File: app/[locale]/page.tsx
+
 ```typescript
 // src/app/[locale]/page.tsx (ボタン/リンク分離版)
 "use client";
@@ -2144,6 +2170,7 @@ export default function HomePage() {
 ```
 
 ## File: app/NextTamaguiProvider.tsx
+
 ```typescript
 "use client";
 
@@ -2189,6 +2216,7 @@ export const NextTamaguiProvider = ({ children }: { children: ReactNode }) => {
 ```
 
 ## File: components/features/CardCreateForm.tsx
+
 ```typescript
 // src/components/features/CardCreateForm.tsx (手動翻訳ボタン版)
 
@@ -2440,6 +2468,7 @@ export const CardCreateForm: React.FC<CardCreateFormProps> = ({
 ```
 
 ## File: components/features/CardEditModal.tsx
+
 ```typescript
 'use client';
 
@@ -2678,6 +2707,7 @@ export const CardEditModal: React.FC<CardEditModalProps> = ({
 ```
 
 ## File: components/features/CardList.tsx
+
 ```typescript
 "use client";
 
@@ -3131,6 +3161,7 @@ export function CardList({ deckId }: CardListProps) {
 ```
 
 ## File: components/features/DeckCreateForm.tsx
+
 ```typescript
 'use client';
 
@@ -3284,6 +3315,7 @@ export const DeckCreateForm: React.FC<DeckCreateFormProps> = ({
 ```
 
 ## File: components/features/DeckCreateModal.tsx
+
 ```typescript
 // src/components/features/DeckCreateModal.tsx
 import React from 'react';
@@ -3350,6 +3382,7 @@ export function DeckCreateModal({
 ```
 
 ## File: components/features/DeckEditModal.tsx
+
 ```typescript
 "use client";
 
@@ -3594,6 +3627,7 @@ export const DeckEditModal: React.FC<DeckEditModalProps> = ({
 ```
 
 ## File: components/providers/AuthProvider.tsx
+
 ```typescript
 // src/components/providers/AuthProvider.tsx (ルーティングフック修正版)
 "use client";
@@ -3740,6 +3774,7 @@ export const useAuthContext = (): AuthContextType => {
 ```
 
 ## File: components/ui/ConfirmationDialog.tsx
+
 ```typescript
 "use client";
 
@@ -3839,6 +3874,7 @@ export function ConfirmationDialog({
 ```
 
 ## File: components/AuthStatus.tsx
+
 ```typescript
 "use client";
 
@@ -3914,6 +3950,7 @@ export function AuthStatus() {
 ```
 
 ## File: components/providers.tsx
+
 ```typescript
 'use client'; // Mark this as a Client Component
 
@@ -3965,6 +4002,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 ```
 
 ## File: hooks/useAuth.ts
+
 ```typescript
 import { createClient } from "@/lib/supabase";
 import { AuthError, User, Session } from "@supabase/supabase-js";
@@ -4039,12 +4077,13 @@ export function isAuthError(error: unknown): error is AuthError {
 ```
 
 ## File: hooks/useCardMutations.ts
+
 ```typescript
 // src/hooks/useCardMutations.ts
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AppError, ERROR_CODES } from '@/lib/errors';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { AppError, ERROR_CODES } from "@/lib/errors";
 // import { useLocale } from 'next-intl'; // Removed
-import { type CardUpdatePayload } from '@/lib/zod';
+import { type CardUpdatePayload } from "@/lib/zod";
 
 // Define or import Card type
 export interface Card {
@@ -4073,21 +4112,21 @@ type CreateCardContext = {
 // --- Create Card API Call ---
 const createCardApi = async (
   { deckId }: CreateCardContext,
-  newData: CreateCardData
+  newData: CreateCardData,
 ): Promise<Card> => {
   const apiUrl = `/api/decks/${deckId}/cards`; // locale-independent
   const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(newData),
   });
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new AppError(
-      errorData.message || 'Failed to create card',
+      errorData.message || "Failed to create card",
       response.status,
       errorData.errorCode || ERROR_CODES.INTERNAL_SERVER_ERROR,
-      errorData.details
+      errorData.details,
     );
   }
   return response.json();
@@ -4099,18 +4138,18 @@ export const useCreateCard = (
   options?: {
     onSuccess?: (data: Card) => void;
     onError?: (error: AppError) => void;
-  }
+  },
 ) => {
   const queryClient = useQueryClient();
   return useMutation<Card, AppError, CreateCardData>({
     mutationFn: (newData) => createCardApi({ deckId }, newData),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
-      console.log('Card created successfully:', data);
+      queryClient.invalidateQueries({ queryKey: ["cards", deckId] });
+      console.log("Card created successfully:", data);
       options?.onSuccess?.(data);
     },
     onError: (error) => {
-      console.error('Error creating card:', error);
+      console.error("Error creating card:", error);
       options?.onError?.(error);
     },
   });
@@ -4119,30 +4158,30 @@ export const useCreateCard = (
 // --- Delete Card API Call ---
 const deleteCardApi = async (deckId: string, cardId: string): Promise<void> => {
   const apiUrl = `/api/decks/${deckId}/cards/${cardId}`; // locale-independent
-  const response = await fetch(apiUrl, { method: 'DELETE' });
+  const response = await fetch(apiUrl, { method: "DELETE" });
   if (!response.ok && response.status !== 204) {
     let errorData = {
-      message: 'Failed to delete card',
-      errorCode: 'API_ERROR',
+      message: "Failed to delete card",
+      errorCode: "API_ERROR",
       details: null,
     };
     try {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
         errorData = await response.json();
       }
     } catch (_e) {
       // _e is unused
       console.warn(
-        'Could not parse error response body for DELETE card request.'
+        "Could not parse error response body for DELETE card request.",
       );
     }
     throw new AppError(
-      errorData.message || 'Failed to delete card',
+      errorData.message || "Failed to delete card",
       response.status,
       ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] ||
         ERROR_CODES.INTERNAL_SERVER_ERROR,
-      errorData.details
+      errorData.details,
     );
   }
 };
@@ -4153,15 +4192,15 @@ export const useDeleteCard = (
   options?: {
     onSuccess?: (cardId: string) => void;
     onError?: (error: AppError, cardId: string) => void;
-  }
+  },
 ) => {
   const queryClient = useQueryClient();
   return useMutation<void, AppError, { cardId: string }>({
     mutationFn: ({ cardId }) => deleteCardApi(deckId, cardId),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
+      queryClient.invalidateQueries({ queryKey: ["cards", deckId] });
       console.log(
-        `Card ${variables.cardId} deleted successfully from deck ${deckId}`
+        `Card ${variables.cardId} deleted successfully from deck ${deckId}`,
       );
       options?.onSuccess?.(variables.cardId);
     },
@@ -4176,35 +4215,35 @@ export const useDeleteCard = (
 const updateCardApi = async (
   deckId: string,
   cardId: string,
-  updateData: CardUpdatePayload
+  updateData: CardUpdatePayload,
 ): Promise<Card> => {
   const apiUrl = `/api/decks/${deckId}/cards/${cardId}`; // locale-independent
   console.log(`[updateCardApi] Calling PUT ${apiUrl}`);
   const response = await fetch(apiUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updateData),
   });
   if (!response.ok) {
     let errorData = {
       message: `Failed to update card (Status: ${response.status})`,
-      errorCode: 'API_ERROR',
+      errorCode: "API_ERROR",
       details: null,
     };
     try {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
         errorData = await response.json();
       }
     } catch (e) {
-      console.warn('[updateCardApi] Could not parse error response body:', e);
+      console.warn("[updateCardApi] Could not parse error response body:", e);
     }
     throw new AppError(
       errorData.message,
       response.status,
       ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] ||
         ERROR_CODES.INTERNAL_SERVER_ERROR,
-      errorData.details
+      errorData.details,
     );
   }
   return response.json();
@@ -4216,13 +4255,13 @@ export const useUpdateCard = (
   options?: {
     onSuccess?: (
       updatedCard: Card,
-      variables: { cardId: string; data: CardUpdatePayload }
+      variables: { cardId: string; data: CardUpdatePayload },
     ) => void;
     onError?: (
       error: AppError,
-      variables: { cardId: string; data: CardUpdatePayload }
+      variables: { cardId: string; data: CardUpdatePayload },
     ) => void;
-  }
+  },
 ) => {
   const queryClient = useQueryClient();
   return useMutation<
@@ -4232,10 +4271,10 @@ export const useUpdateCard = (
   >({
     mutationFn: ({ cardId, data }) => updateCardApi(deckId, cardId, data),
     onSuccess: (updatedCard, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['cards', deckId] });
+      queryClient.invalidateQueries({ queryKey: ["cards", deckId] });
       console.log(
         `Card ${variables.cardId} updated successfully:`,
-        updatedCard
+        updatedCard,
       );
       options?.onSuccess?.(updatedCard, variables);
     },
@@ -4248,17 +4287,18 @@ export const useUpdateCard = (
 ```
 
 ## File: hooks/useCards.ts
+
 ```typescript
 // src/hooks/useCards.ts (Updated for aiContents and explicit return type)
 
-import { useQuery } from '@tanstack/react-query';
-import { AppError, isAppError } from '@/lib/errors';
+import { useQuery } from "@tanstack/react-query";
+import { AppError, isAppError } from "@/lib/errors";
 // Import types needed for pagination and the card data structure (including aiContents)
 import {
   type PaginatedCardsResponse, // Contains CardApiResponse[] with aiContents
   type CardApiResponse, // Card type including aiContents
   type PaginationMeta, // Pagination metadata type
-} from '@/types/api.types';
+} from "@/types/api.types";
 
 // Interface for potential error object structure from the API
 // Consider using ApiErrorResponse from api.types.ts if it matches the actual error structure
@@ -4273,11 +4313,11 @@ interface ApiErrorLike {
 const fetchPaginatedCards = async (
   deckId: string,
   offset: number,
-  limit: number
+  limit: number,
 ): Promise<PaginatedCardsResponse> => {
   if (!deckId) {
     // This check is important, although 'enabled' should prevent calls without deckId
-    throw new Error('Deck ID is required to fetch cards.');
+    throw new Error("Deck ID is required to fetch cards.");
   }
 
   // Construct URL with pagination query parameters
@@ -4296,28 +4336,28 @@ const fetchPaginatedCards = async (
       message: `Failed to fetch cards for deck ${deckId}. Status: ${response.status}`,
     };
     try {
-      const contentType = response.headers.get('content-type');
+      const contentType = response.headers.get("content-type");
       if (
         response.body &&
         contentType &&
-        contentType.includes('application/json')
+        contentType.includes("application/json")
       ) {
         // Try to parse JSON error, potentially matching ApiErrorResponse or AppError structure
         errorData = await response.json();
       } else if (response.body) {
         const textResponse = await response.text();
         console.warn(
-          `[useCards fetcher] Received non-JSON error response: ${textResponse.substring(0, 100)}`
+          `[useCards fetcher] Received non-JSON error response: ${textResponse.substring(0, 100)}`,
         );
         // Ensure errorData is an object before assigning message
-        if (typeof errorData === 'object' && errorData !== null) {
+        if (typeof errorData === "object" && errorData !== null) {
           errorData.message = textResponse.substring(0, 100); // Use part of the text as the message
         }
       }
     } catch (e) {
       console.warn(
-        '[useCards fetcher] Could not parse error response body:',
-        e
+        "[useCards fetcher] Could not parse error response body:",
+        e,
       );
     }
 
@@ -4328,15 +4368,15 @@ const fetchPaginatedCards = async (
         errorData.message, // Guaranteed string by AppError
         response.status,
         errorData.errorCode, // Guaranteed ErrorCode by AppError
-        errorData.details
+        errorData.details,
       );
     } else {
       // Handle cases where errorData is not a structured AppError
       const errorMessage =
-        typeof errorData === 'object' &&
+        typeof errorData === "object" &&
         errorData !== null &&
-        'message' in errorData &&
-        typeof errorData.message === 'string'
+        "message" in errorData &&
+        typeof errorData.message === "string"
           ? errorData.message // Use message if available
           : `Failed to fetch cards for deck ${deckId}. Status: ${response.status}`; // Fallback message
       // Consider throwing AppError with a default code if appropriate
@@ -4350,8 +4390,8 @@ const fetchPaginatedCards = async (
   const data: PaginatedCardsResponse = await response.json();
   // Optional: Add validation here if needed (e.g., using Zod)
   if (!data || !Array.isArray(data.data) || !data.pagination) {
-    console.error('[useCards fetcher] Invalid response format received:', data);
-    throw new Error('Invalid response format from cards API.');
+    console.error("[useCards fetcher] Invalid response format received:", data);
+    throw new Error("Invalid response format from cards API.");
   }
   return data;
 };
@@ -4381,7 +4421,7 @@ interface UseCardsReturn {
 // Update hook signature to accept pagination options and return the defined type
 export const useCards = (
   deckId: string | null,
-  options: UseCardsOptions = {}
+  options: UseCardsOptions = {},
 ): UseCardsReturn => {
   // Get pagination options with default values
   const { offset = 0, limit = 10 } = options;
@@ -4390,7 +4430,7 @@ export const useCards = (
   // Type arguments use the imported, updated types
   const queryResult = useQuery<PaginatedCardsResponse, Error | AppError>({
     // Update queryKey to include pagination parameters for unique caching per page
-    queryKey: ['cards', deckId, { offset, limit }],
+    queryKey: ["cards", deckId, { offset, limit }],
     // Update queryFn to call the paginated fetcher
     queryFn: () => {
       // Double-check deckId existence (though 'enabled' handles this)
@@ -4398,7 +4438,7 @@ export const useCards = (
         // Should not happen if 'enabled' is working, return rejected promise
         // Use AppError for consistency if desired
         return Promise.reject(
-          new AppError('Deck ID is required.', 400, 'VALIDATION_ERROR')
+          new AppError("Deck ID is required.", 400, "VALIDATION_ERROR"),
         );
       }
       // Call the updated fetcher with deckId and pagination params
@@ -4435,6 +4475,7 @@ export type { CardApiResponse as Card };
 ```
 
 ## File: hooks/useDeckMutations.ts
+
 ```typescript
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
@@ -4611,6 +4652,7 @@ export const useUpdateDeck = () => {
 ```
 
 ## File: hooks/useDecks.ts
+
 ```typescript
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
@@ -4696,19 +4738,20 @@ export const useDecks = (options: UseDecksOptions = {}): UseDecksReturn => {
 ```
 
 ## File: hooks/useGenerateTts.ts
+
 ```typescript
 // src/hooks/useGenerateTts.ts (ts(2739) エラー修正 + _e 修正 適用済み)
 
-import { useMutation, UseMutationOptions } from '@tanstack/react-query';
+import { useMutation, UseMutationOptions } from "@tanstack/react-query";
 // ↓↓↓ ERROR_CODES をインポート (初期値設定と AppError で必要) ↓↓↓
-import { AppError, ERROR_CODES } from '@/lib/errors';
-import { type ApiErrorResponse } from '@/types/api.types';
+import { AppError, ERROR_CODES } from "@/lib/errors";
+import { type ApiErrorResponse } from "@/types/api.types";
 
 export interface TtsPayload {
   text: string;
   language: string; // ★ オプショナル (?) を削除して必須に ★
   cardId: string;
-  side: 'front' | 'back';
+  side: "front" | "back";
 }
 
 // APIから成功時に受け取るデータの型 (signedUrl, gcsPath を含む)
@@ -4721,19 +4764,19 @@ export interface TtsSuccessResponse {
 
 // バックエンドAPI (/api/tts) を呼び出す非同期関数
 const generateTtsApi = async (
-  payload: TtsPayload
+  payload: TtsPayload,
 ): Promise<TtsSuccessResponse> => {
-  const apiUrl = '/api/tts';
+  const apiUrl = "/api/tts";
   console.log(
-    '[useGenerateTts] Calling API:',
+    "[useGenerateTts] Calling API:",
     apiUrl,
-    'with payload:',
-    payload
+    "with payload:",
+    payload,
   );
 
   const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
@@ -4748,11 +4791,11 @@ const generateTtsApi = async (
     // --- ↑↑↑ 修正ここまで ↑↑↑ ---
 
     try {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
         const parsedError: ApiErrorResponse = await response.json();
         // API から返ってきた値があればデフォルトを上書き
-        if (parsedError && typeof parsedError.error === 'string') {
+        if (parsedError && typeof parsedError.error === "string") {
           errorData.error = parsedError.error;
         }
         errorData.message = parsedError?.message || errorData.message;
@@ -4760,7 +4803,7 @@ const generateTtsApi = async (
       }
       // --- ↓↓↓ catch (_e) の修正 (適用済みのはず) ↓↓↓ ---
     } catch (_e) {
-      console.warn('[useGenerateTts] Could not parse error response body:', _e);
+      console.warn("[useGenerateTts] Could not parse error response body:", _e);
     }
     // --- ↑↑↑ 修正ここまで ↑↑↑ ---
 
@@ -4777,7 +4820,7 @@ const generateTtsApi = async (
       errorData.message,
       response.status,
       validErrorCode,
-      errorData.details
+      errorData.details,
     );
   } // if (!response.ok) の終わり
 
@@ -4787,14 +4830,14 @@ const generateTtsApi = async (
   if (
     !result ||
     result.success !== true ||
-    typeof result.signedUrl !== 'string' ||
-    typeof result.gcsPath !== 'string' // gcsPath もチェック
+    typeof result.signedUrl !== "string" ||
+    typeof result.gcsPath !== "string" // gcsPath もチェック
   ) {
-    console.error('[useGenerateTts] Invalid success response format:', result);
+    console.error("[useGenerateTts] Invalid success response format:", result);
     throw new AppError(
-      'Received invalid response format from TTS API.',
+      "Received invalid response format from TTS API.",
       500,
-      ERROR_CODES.INTERNAL_SERVER_ERROR
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
     );
   }
   return result as TtsSuccessResponse;
@@ -4802,7 +4845,7 @@ const generateTtsApi = async (
 
 type UseGenerateTtsOptions = Omit<
   UseMutationOptions<TtsSuccessResponse, AppError, TtsPayload>, // variables が TtsPayload に
-  'mutationFn'
+  "mutationFn"
 >;
 
 // --- useGenerateTts フック本体 (変更なし) ---
@@ -4819,12 +4862,13 @@ export const useGenerateTts = (options?: UseGenerateTtsOptions) => {
 ```
 
 ## File: hooks/useGetTtsUrl.ts
+
 ```typescript
 // src/hooks/useGetTtsUrl.ts (QueryKey 型修正版)
 
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { AppError, ERROR_CODES } from '@/lib/errors';
-import { type ApiErrorResponse } from '@/types/api.types';
+import { useQuery, UseQueryOptions } from "@tanstack/react-query";
+import { AppError, ERROR_CODES } from "@/lib/errors";
+import { type ApiErrorResponse } from "@/types/api.types";
 
 // APIから成功時に受け取るデータの型 (変更なし)
 interface GetTtsUrlSuccessResponse {
@@ -4834,13 +4878,13 @@ interface GetTtsUrlSuccessResponse {
 
 // API 呼び出し関数 (変更なし)
 const getTtsUrlApi = async (
-  gcsPath: string
+  gcsPath: string,
 ): Promise<GetTtsUrlSuccessResponse> => {
   if (!gcsPath) {
-    throw new Error('GCS path is required.');
+    throw new Error("GCS path is required.");
   }
   const apiUrl = `/api/tts/signed-url?gcsPath=${encodeURIComponent(gcsPath)}`;
-  console.log('[useGetTtsUrl] Calling API:', apiUrl);
+  console.log("[useGetTtsUrl] Calling API:", apiUrl);
   const response = await fetch(apiUrl);
   if (!response.ok) {
     const errorData: ApiErrorResponse = {
@@ -4863,20 +4907,20 @@ const getTtsUrlApi = async (
       errorData.message,
       response.status,
       validErrorCode,
-      errorData.details
+      errorData.details,
     );
   }
   const result: GetTtsUrlSuccessResponse = await response.json();
   if (
     !result ||
     result.success !== true ||
-    typeof result.signedUrl !== 'string'
+    typeof result.signedUrl !== "string"
   ) {
-    console.error('[useGetTtsUrl] Invalid success response format:', result);
+    console.error("[useGetTtsUrl] Invalid success response format:", result);
     throw new AppError(
-      'Received invalid response format from get signed URL API.',
+      "Received invalid response format from get signed URL API.",
       500,
-      ERROR_CODES.INTERNAL_SERVER_ERROR
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
     );
   }
   return result;
@@ -4888,9 +4932,9 @@ type UseGetTtsUrlOptions = Omit<
     GetTtsUrlSuccessResponse,
     AppError,
     GetTtsUrlSuccessResponse,
-    readonly ['ttsUrl', string | null | undefined]
+    readonly ["ttsUrl", string | null | undefined]
   >, // ★ undefined を許容 ★
-  'queryKey' | 'queryFn'
+  "queryKey" | "queryFn"
 >;
 
 /**
@@ -4898,25 +4942,25 @@ type UseGetTtsUrlOptions = Omit<
  */
 export const useGetTtsUrl = (
   gcsPath: string | null | undefined, // 引数の型は string | null | undefined
-  options?: UseGetTtsUrlOptions
+  options?: UseGetTtsUrlOptions,
 ) => {
   // ↓↓↓ useQuery の QueryKey 型を修正 ↓↓↓
   return useQuery<
     GetTtsUrlSuccessResponse,
     AppError,
     GetTtsUrlSuccessResponse,
-    readonly ['ttsUrl', string | null | undefined] // ★ undefined を許容 ★
+    readonly ["ttsUrl", string | null | undefined] // ★ undefined を許容 ★
   >({
-    queryKey: ['ttsUrl', gcsPath], // ★ ここに string | null | undefined が渡されるため型を合わせる ★
+    queryKey: ["ttsUrl", gcsPath], // ★ ここに string | null | undefined が渡されるため型を合わせる ★
     queryFn: () => {
       if (!gcsPath) {
-        return Promise.reject(new Error('gcsPath is required.'));
+        return Promise.reject(new Error("gcsPath is required."));
       }
       return getTtsUrlApi(gcsPath);
     },
     enabled:
       !!gcsPath &&
-      typeof gcsPath === 'string' &&
+      typeof gcsPath === "string" &&
       gcsPath.length > 0 &&
       options?.enabled !== false,
     staleTime: 10 * 60 * 1000, // 10 minutes
@@ -4928,16 +4972,17 @@ export const useGetTtsUrl = (
 ```
 
 ## File: hooks/useSaveAiContent.ts
+
 ```typescript
 // src/hooks/useSaveAiContent.ts (新規作成)
 
-import { useMutation, UseMutationOptions } from '@tanstack/react-query';
-import { AppError, ERROR_CODES } from '@/lib/errors';
+import { useMutation, UseMutationOptions } from "@tanstack/react-query";
+import { AppError, ERROR_CODES } from "@/lib/errors";
 import {
   type ApiErrorResponse,
   type AICardContentApiResponse,
-} from '@/types/api.types';
-import { AiContentType } from '@prisma/client'; // Enum が必要
+} from "@/types/api.types";
+import { AiContentType } from "@prisma/client"; // Enum が必要
 
 // mutate 関数に渡すデータの型 (API URLの cardId と body の両方を含む)
 export interface SaveAiContentVariables {
@@ -4949,7 +4994,7 @@ export interface SaveAiContentVariables {
 
 // API を呼び出す関数
 const saveAiContentApi = async (
-  variables: SaveAiContentVariables
+  variables: SaveAiContentVariables,
 ): Promise<AICardContentApiResponse> => {
   // 成功時は作成された AICardContent を返す想定
   const { cardId, ...bodyPayload } = variables; // cardId を分離し、残りを body に使う
@@ -4957,8 +5002,8 @@ const saveAiContentApi = async (
   console.log(`[useSaveAiContent] Calling API: POST ${apiUrl}`);
 
   const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(bodyPayload), // cardId 以外のデータを body に
   });
 
@@ -4970,10 +5015,10 @@ const saveAiContentApi = async (
       details: null,
     };
     try {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
         const parsedError: ApiErrorResponse = await response.json();
-        if (parsedError && typeof parsedError.error === 'string') {
+        if (parsedError && typeof parsedError.error === "string") {
           errorData.error = parsedError.error;
         }
         errorData.message = parsedError?.message || errorData.message;
@@ -4981,8 +5026,8 @@ const saveAiContentApi = async (
       }
     } catch (_e) {
       console.warn(
-        '[useSaveAiContent] Could not parse error response body:',
-        _e
+        "[useSaveAiContent] Could not parse error response body:",
+        _e,
       );
     }
 
@@ -4996,7 +5041,7 @@ const saveAiContentApi = async (
       errorData.message,
       response.status,
       validErrorCode,
-      errorData.details
+      errorData.details,
     );
   }
 
@@ -5005,19 +5050,19 @@ const saveAiContentApi = async (
   // 簡単な検証
   if (
     !result ||
-    typeof result.id !== 'string' ||
+    typeof result.id !== "string" ||
     !result.contentType ||
     !result.language ||
-    typeof result.content !== 'string'
+    typeof result.content !== "string"
   ) {
     console.error(
-      '[useSaveAiContent] Invalid success response format:',
-      result
+      "[useSaveAiContent] Invalid success response format:",
+      result,
     );
     throw new AppError(
-      'Received invalid response format from save AI content API.',
+      "Received invalid response format from save AI content API.",
       500,
-      ERROR_CODES.INTERNAL_SERVER_ERROR
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
     );
   }
   return result;
@@ -5030,7 +5075,7 @@ type UseSaveAiContentOptions = Omit<
     AppError,
     SaveAiContentVariables
   >,
-  'mutationFn'
+  "mutationFn"
 >;
 
 /**
@@ -5050,11 +5095,12 @@ export const useSaveAiContent = (options?: UseSaveAiContentOptions) => {
 ```
 
 ## File: hooks/useTranslateText.ts
+
 ```typescript
 // src/hooks/useTranslateText.ts
 
-import { useMutation } from '@tanstack/react-query';
-import { AppError, ERROR_CODES } from '@/lib/errors'; // AppError をインポート
+import { useMutation } from "@tanstack/react-query";
+import { AppError, ERROR_CODES } from "@/lib/errors"; // AppError をインポート
 
 // API リクエストのペイロード型
 interface TranslatePayload {
@@ -5072,21 +5118,21 @@ interface TranslateSuccessResponse {
 
 // API 呼び出し関数
 const translateTextApi = async (
-  payload: TranslatePayload
+  payload: TranslatePayload,
 ): Promise<TranslateSuccessResponse> => {
   // 注意: この API ルート '/api/translate' はまだ作成していません！
   // 次のステップで作成します。
-  const apiUrl = '/api/translate';
+  const apiUrl = "/api/translate";
   console.log(
-    '[useTranslateText] Calling API:',
+    "[useTranslateText] Calling API:",
     apiUrl,
-    'with payload:',
-    payload
+    "with payload:",
+    payload,
   );
 
   const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
@@ -5096,13 +5142,13 @@ const translateTextApi = async (
       errorCode?: string;
       details?: unknown;
     } = {
-      message: 'Failed to translate text',
-      errorCode: 'API_ERROR',
+      message: "Failed to translate text",
+      errorCode: "API_ERROR",
       details: null,
     };
     try {
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
         // Try to parse specific error structure from API
         const parsedError = await response.json();
         errorData.message = parsedError.message || errorData.message;
@@ -5111,32 +5157,32 @@ const translateTextApi = async (
       }
     } catch (e) {
       console.warn(
-        '[useTranslateText] Could not parse error response body:',
-        e
+        "[useTranslateText] Could not parse error response body:",
+        e,
       );
     }
     // Throw AppError using parsed details if possible
     throw new AppError(
-      errorData.message || 'Translation request failed',
+      errorData.message || "Translation request failed",
       response.status,
       ERROR_CODES[errorData.errorCode as keyof typeof ERROR_CODES] ||
         ERROR_CODES.INTERNAL_SERVER_ERROR,
-      errorData.details
+      errorData.details,
     );
   }
 
   // Parse successful response
   const result: TranslateSuccessResponse = await response.json();
   // Validate success response structure
-  if (!result.success || typeof result.translation !== 'string') {
+  if (!result.success || typeof result.translation !== "string") {
     console.error(
-      '[useTranslateText] Invalid success response format:',
-      result
+      "[useTranslateText] Invalid success response format:",
+      result,
     );
     throw new AppError(
-      'Received invalid response format from translation API.',
+      "Received invalid response format from translation API.",
       500,
-      ERROR_CODES.INTERNAL_SERVER_ERROR
+      ERROR_CODES.INTERNAL_SERVER_ERROR,
     );
   }
   return result;
@@ -5154,26 +5200,26 @@ export const useTranslateText = (options?: {
   >({
     mutationFn: translateTextApi,
     onSuccess: (data) => {
-      console.log('Translation successful:', data);
+      console.log("Translation successful:", data);
       options?.onSuccess?.(data);
     },
     onError: (error) => {
       // Ensure error is AppError before passing to callback
       if (error instanceof AppError) {
-        console.error('Translation error:', error);
+        console.error("Translation error:", error);
         options?.onError?.(error);
       } else {
         // Handle cases where error might not be AppError (shouldn't happen if translateTextApi throws AppError)
         console.error(
-          'An unexpected non-AppError occurred during translation:',
-          error
+          "An unexpected non-AppError occurred during translation:",
+          error,
         );
         // Optionally wrap it in AppError before calling onError
         const unknownError = new AppError(
-          'An unexpected error occurred during translation.',
+          "An unexpected error occurred during translation.",
           500,
-          'INTERNAL_SERVER_ERROR',
-          error
+          "INTERNAL_SERVER_ERROR",
+          error,
         );
         options?.onError?.(unknownError);
       }
@@ -5183,9 +5229,10 @@ export const useTranslateText = (options?: {
 ```
 
 ## File: i18n/navigation.ts
+
 ```typescript
-import { createNavigation } from 'next-intl/navigation';
-import { routing } from './routing';
+import { createNavigation } from "next-intl/navigation";
+import { routing } from "./routing";
 
 // Lightweight wrappers around Next.js' navigation
 // APIs that consider the routing configuration
@@ -5194,10 +5241,11 @@ export const { Link, redirect, usePathname, useRouter, getPathname } =
 ```
 
 ## File: i18n/request.ts
+
 ```typescript
-import { getRequestConfig } from 'next-intl/server';
-import { hasLocale } from 'next-intl';
-import { routing } from './routing';
+import { getRequestConfig } from "next-intl/server";
+import { hasLocale } from "next-intl";
+import { routing } from "./routing";
 
 export default getRequestConfig(async ({ requestLocale }) => {
   // Typically corresponds to the `[locale]` segment
@@ -5214,24 +5262,26 @@ export default getRequestConfig(async ({ requestLocale }) => {
 ```
 
 ## File: i18n/routing.ts
+
 ```typescript
-import { defineRouting } from 'next-intl/routing';
+import { defineRouting } from "next-intl/routing";
 
 export const routing = defineRouting({
   // A list of all locales that are supported
-  locales: ['en', 'ja'],
+  locales: ["en", "ja"],
 
   // Used when no locale matches
-  defaultLocale: 'en',
+  defaultLocale: "en",
 });
 ```
 
 ## File: lib/auth.ts
+
 ```typescript
-import { cookies } from 'next/headers';
-import { createSupabaseServerComponentClient } from '@/lib/supabase'; // Use the server-side client creator
-import { User } from '@supabase/supabase-js';
-import { AuthError } from '@supabase/supabase-js'; // Import AuthError type
+import { cookies } from "next/headers";
+import { createSupabaseServerComponentClient } from "@/lib/supabase"; // Use the server-side client creator
+import { User } from "@supabase/supabase-js";
+import { AuthError } from "@supabase/supabase-js"; // Import AuthError type
 
 // Define a more specific error type if needed, or use AuthError directly
 // Define a simpler error type for the catch block
@@ -5262,21 +5312,21 @@ export const getServerUser = async (): Promise<ServerUserResult> => {
     } = await supabase.auth.getUser();
 
     if (error) {
-      console.error('Error getting server user:', error.message);
+      console.error("Error getting server user:", error.message);
       return { user: null, error };
     }
 
     return { user, error: null };
   } catch (err: unknown) {
     // Catch potential errors during client creation or cookie access
-    console.error('Unexpected error in getServerUser:', err);
+    console.error("Unexpected error in getServerUser:", err);
     // Determine the error message safely
-    let errorMessage = 'An unexpected error occurred retrieving server user.';
+    let errorMessage = "An unexpected error occurred retrieving server user.";
     if (
-      typeof err === 'object' &&
+      typeof err === "object" &&
       err !== null &&
-      'message' in err &&
-      typeof err.message === 'string'
+      "message" in err &&
+      typeof err.message === "string"
     ) {
       errorMessage = err.message;
     } else if (err instanceof Error) {
@@ -5284,7 +5334,7 @@ export const getServerUser = async (): Promise<ServerUserResult> => {
     }
     // Return a simpler error object
     const error: ServerAuthCatchError = {
-      name: 'ServerAuthCatchError',
+      name: "ServerAuthCatchError",
       message: errorMessage,
       status: 500, // Internal Server Error
     };
@@ -5303,8 +5353,9 @@ export const getServerUserId = async (): Promise<string | null> => {
 ```
 
 ## File: lib/db.ts
+
 ```typescript
-import { PrismaClient } from '.prisma/client';
+import { PrismaClient } from ".prisma/client";
 
 // Declare a global variable to hold the Prisma client instance
 declare global {
@@ -5322,7 +5373,7 @@ const prisma =
   });
 
 // In development, assign the instance to the global variable
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== "production") {
   global.prisma = prisma;
 }
 
@@ -5330,17 +5381,18 @@ export default prisma;
 ```
 
 ## File: lib/errors.ts
+
 ```typescript
 // 標準エラーコードの例 (プロジェクトに合わせて定義)
 export const ERROR_CODES = {
-  VALIDATION_ERROR: 'VALIDATION_ERROR',
-  AUTHENTICATION_FAILED: 'AUTHENTICATION_FAILED',
-  PERMISSION_DENIED: 'PERMISSION_DENIED',
-  RESOURCE_NOT_FOUND: 'RESOURCE_NOT_FOUND',
-  RESOURCE_CONFLICT: 'RESOURCE_CONFLICT', // ★ 既存リソースとの衝突 (例: Unique制約)
-  EXTERNAL_API_FAILURE: 'EXTERNAL_API_FAILURE',
-  DATABASE_ERROR: 'DATABASE_ERROR', // ★ データベース関連エラー
-  INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  AUTHENTICATION_FAILED: "AUTHENTICATION_FAILED",
+  PERMISSION_DENIED: "PERMISSION_DENIED",
+  RESOURCE_NOT_FOUND: "RESOURCE_NOT_FOUND",
+  RESOURCE_CONFLICT: "RESOURCE_CONFLICT", // ★ 既存リソースとの衝突 (例: Unique制約)
+  EXTERNAL_API_FAILURE: "EXTERNAL_API_FAILURE",
+  DATABASE_ERROR: "DATABASE_ERROR", // ★ データベース関連エラー
+  INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
 } as const; // Readonlyにする
 
 type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -5355,7 +5407,7 @@ export class AppError extends Error {
     message: string,
     statusCode: number,
     errorCode: ErrorCode,
-    details?: unknown
+    details?: unknown,
   ) {
     super(message);
     this.statusCode = statusCode;
@@ -5370,32 +5422,32 @@ export class AppError extends Error {
 // --- 具体的なエラークラス ---
 
 export class ValidationError extends AppError {
-  constructor(message: string = 'Invalid input data.', details?: unknown) {
+  constructor(message: string = "Invalid input data.", details?: unknown) {
     super(message, 400, ERROR_CODES.VALIDATION_ERROR, details);
   }
 }
 
 export class AuthenticationError extends AppError {
-  constructor(message: string = 'Authentication failed.') {
+  constructor(message: string = "Authentication failed.") {
     super(message, 401, ERROR_CODES.AUTHENTICATION_FAILED);
   }
 }
 
 export class PermissionError extends AppError {
-  constructor(message: string = 'Permission denied.') {
+  constructor(message: string = "Permission denied.") {
     super(message, 403, ERROR_CODES.PERMISSION_DENIED);
   }
 }
 
 export class NotFoundError extends AppError {
-  constructor(message: string = 'Resource not found.') {
+  constructor(message: string = "Resource not found.") {
     super(message, 404, ERROR_CODES.RESOURCE_NOT_FOUND);
   }
 }
 
 // ★ デッキ作成時のユニーク制約違反などに使用 ★
 export class ConflictError extends AppError {
-  constructor(message: string = 'Resource conflict.') {
+  constructor(message: string = "Resource conflict.") {
     super(message, 409, ERROR_CODES.RESOURCE_CONFLICT);
   }
 }
@@ -5412,9 +5464,9 @@ export class ExternalApiError extends AppError {
    * @param details - Optional: Additional details (like safety ratings). // ← details を追加
    */
   constructor(
-    message: string = 'External API request failed.',
+    message: string = "External API request failed.",
     originalError?: Error,
-    details?: unknown // ★ オプションの details 引数を追加 ★
+    details?: unknown, // ★ オプションの details 引数を追加 ★
   ) {
     // ★ AppError の第4引数 (details) に渡すように修正 ★
     //    details があればそれを、なければ originalError を渡す例
@@ -5422,7 +5474,7 @@ export class ExternalApiError extends AppError {
       message,
       503,
       ERROR_CODES.EXTERNAL_API_FAILURE,
-      details ?? originalError
+      details ?? originalError,
     );
   }
 }
@@ -5432,8 +5484,8 @@ export class ExternalApiError extends AppError {
 // ★ 予期せぬデータベースエラーなどに使用 ★
 export class DatabaseError extends AppError {
   constructor(
-    message: string = 'Database operation failed.',
-    originalError?: Error
+    message: string = "Database operation failed.",
+    originalError?: Error,
   ) {
     // DBエラーの詳細はログには出すが、クライアントには返さない想定
     super(message, 500, ERROR_CODES.DATABASE_ERROR, originalError);
@@ -5443,8 +5495,8 @@ export class DatabaseError extends AppError {
 // 予期せぬサーバー内部エラー
 export class InternalServerError extends AppError {
   constructor(
-    message: string = 'An unexpected internal server error occurred.',
-    originalError?: Error
+    message: string = "An unexpected internal server error occurred.",
+    originalError?: Error,
   ) {
     super(message, 500, ERROR_CODES.INTERNAL_SERVER_ERROR, originalError);
   }
@@ -5454,7 +5506,7 @@ export class InternalServerError extends AppError {
 export const isAppError = (error: unknown): error is AppError => {
   return error instanceof AppError;
 };
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 // Note: Assuming AppError, ERROR_CODES, InternalServerError, isAppError are defined above in the same file.
 // If Prisma errors need specific handling, import Prisma from '@prisma/client'
 
@@ -5465,7 +5517,7 @@ import { NextResponse } from 'next/server';
  * @returns A NextResponse object with the appropriate status code and error details.
  */
 export const handleApiError = (error: unknown): NextResponse => {
-  console.error('API Error:', error); // Log the error for server-side debugging
+  console.error("API Error:", error); // Log the error for server-side debugging
 
   if (isAppError(error)) {
     // Handle known application errors
@@ -5475,7 +5527,7 @@ export const handleApiError = (error: unknown): NextResponse => {
         errorCode: error.errorCode,
         details: error.details,
       },
-      { status: error.statusCode }
+      { status: error.statusCode },
     );
   }
 
@@ -5501,29 +5553,30 @@ export const handleApiError = (error: unknown): NextResponse => {
   // Handle unexpected errors
   // Ensure InternalServerError is defined above or imported
   const internalError = new InternalServerError(
-    'An unexpected error occurred.',
-    error instanceof Error ? error : undefined
+    "An unexpected error occurred.",
+    error instanceof Error ? error : undefined,
   );
   return NextResponse.json(
     {
       message: internalError.message,
       errorCode: internalError.errorCode,
     },
-    { status: internalError.statusCode }
+    { status: internalError.statusCode },
   );
 };
 ```
 
 ## File: lib/supabase.ts
+
 ```typescript
 // src/lib/supabase.ts (最終修正版)
 import {
   createBrowserClient,
   createServerClient,
   type CookieOptions,
-} from '@supabase/ssr';
-import { type ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
-import { type NextRequest, type NextResponse } from 'next/server';
+} from "@supabase/ssr";
+import { type ReadonlyRequestCookies } from "next/dist/server/web/spec-extension/adapters/request-cookies";
+import { type NextRequest, type NextResponse } from "next/server";
 
 // Ensure environment variables are defined
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -5531,10 +5584,10 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl) {
-  throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_URL');
+  throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_URL");
 }
 if (!supabaseAnonKey) {
-  throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY");
 }
 // if (!supabaseServiceRoleKey) { console.warn(...) }
 
@@ -5544,7 +5597,7 @@ export const createClient = () =>
 
 // --- Server Component Client (Read-Only Cookies) ---
 export const createSupabaseServerComponentClient = (
-  cookieStore: ReadonlyRequestCookies
+  cookieStore: ReadonlyRequestCookies,
 ) => {
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
     cookies: {
@@ -5557,7 +5610,7 @@ export const createSupabaseServerComponentClient = (
 
 // --- Server Action / Route Handler Client (Read/Write Cookies) ---
 export const createSupabaseServerActionClient = (
-  cookieStoreAccessor: () => ReadonlyRequestCookies
+  cookieStoreAccessor: () => ReadonlyRequestCookies,
 ) => {
   const cookieStore = cookieStoreAccessor();
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
@@ -5571,17 +5624,17 @@ export const createSupabaseServerActionClient = (
         } catch (error) {
           console.error(
             `ServerActionClient: Failed to set cookie '${name}'.`,
-            error
+            error,
           );
         }
       },
       remove(name: string, options: CookieOptions) {
         try {
-          cookieStoreAccessor().set({ name, value: '', ...options, maxAge: 0 });
+          cookieStoreAccessor().set({ name, value: "", ...options, maxAge: 0 });
         } catch (error) {
           console.error(
             `ServerActionClient: Failed to remove cookie '${name}'.`,
-            error
+            error,
           );
         }
       },
@@ -5602,7 +5655,7 @@ export const createMiddlewareClient = (req: NextRequest, res: NextResponse) => {
       },
       remove(name: string, options: CookieOptions) {
         req.cookies.delete(name);
-        res.cookies.set({ name, value: '', ...options, maxAge: 0 });
+        res.cookies.set({ name, value: "", ...options, maxAge: 0 });
       },
     },
   });
@@ -5611,7 +5664,7 @@ export const createMiddlewareClient = (req: NextRequest, res: NextResponse) => {
 // --- Server-Side Admin Client (Optional) ---
 export const createAdminClient = () => {
   if (!supabaseServiceRoleKey) {
-    throw new Error('Missing env.SUPABASE_SERVICE_ROLE_KEY for admin client.');
+    throw new Error("Missing env.SUPABASE_SERVICE_ROLE_KEY for admin client.");
   }
   return createServerClient(supabaseUrl!, supabaseServiceRoleKey!, {
     auth: {
@@ -5631,18 +5684,19 @@ export const createAdminClient = () => {
 ```
 
 ## File: lib/zod.ts
+
 ```typescript
-import { z } from 'zod';
+import { z } from "zod";
 
 // --- デッキ作成用スキーマと型 ---
 export const deckCreateSchema = z.object({
   name: z
     .string()
-    .min(1, { message: 'Deck name is required.' }) // 日本語メッセージはi18n対応を後で検討
-    .max(100, { message: 'Deck name must be 100 characters or less.' }),
+    .min(1, { message: "Deck name is required." }) // 日本語メッセージはi18n対応を後で検討
+    .max(100, { message: "Deck name must be 100 characters or less." }),
   description: z
     .string()
-    .max(500, { message: 'Description must be 500 characters or less.' })
+    .max(500, { message: "Description must be 500 characters or less." })
     .optional() // 任意入力
     .nullable(), // null も許容 (フォーム未入力時に null になる場合を考慮)
 });
@@ -5651,12 +5705,12 @@ export const deckCreateSchema = z.object({
 export type DeckCreatePayload = z.infer<typeof deckCreateSchema>;
 
 // --- 他のスキーマ (例: 学習結果更新用) ---
-export const reviewResultSchema = z.object({
+export const cardRatingSchema = z.object({
   cardId: z.string().cuid(), // cuid形式を期待する場合
-  rating: z.enum(['AGAIN', 'HARD', 'GOOD', 'EASY']), // Enumの値と一致
+  rating: z.enum(["AGAIN", "HARD", "GOOD", "EASY"]), // Enumの値と一致
 });
 
-export type ReviewResultPayload = z.infer<typeof reviewResultSchema>;
+export type CardRatingPayload = z.infer<typeof cardRatingSchema>;
 
 // --- パスワード変更用スキーマ (例) ---
 export const changePasswordSchema = z.object({
@@ -5670,12 +5724,12 @@ export type ChangePasswordPayload = z.infer<typeof changePasswordSchema>;
 export const cardCreateSchema = z.object({
   front: z
     .string()
-    .min(1, { message: 'Front content is required.' })
-    .max(1000, { message: 'Front content must be 1000 characters or less.' }),
+    .min(1, { message: "Front content is required." })
+    .max(1000, { message: "Front content must be 1000 characters or less." }),
   back: z
     .string()
-    .min(1, { message: 'Back content is required.' })
-    .max(1000, { message: 'Back content must be 1000 characters or less.' }),
+    .min(1, { message: "Back content is required." })
+    .max(1000, { message: "Back content must be 1000 characters or less." }),
   // deckId は API ルートハンドラでパスパラメータから取得するため、ここには含めない
 });
 export type CardCreatePayload = z.infer<typeof cardCreateSchema>;
@@ -5685,18 +5739,18 @@ export const cardUpdateSchema = z
   .object({
     front: z
       .string()
-      .min(1, { message: 'Front content cannot be empty if provided.' }) // 空文字での更新を防ぐ場合
-      .max(1000, { message: 'Front content must be 1000 characters or less.' })
+      .min(1, { message: "Front content cannot be empty if provided." }) // 空文字での更新を防ぐ場合
+      .max(1000, { message: "Front content must be 1000 characters or less." })
       .optional(), // 任意入力
     back: z
       .string()
-      .min(1, { message: 'Back content cannot be empty if provided.' }) // 空文字での更新を防ぐ場合
-      .max(1000, { message: 'Back content must be 1000 characters or less.' })
+      .min(1, { message: "Back content cannot be empty if provided." }) // 空文字での更新を防ぐ場合
+      .max(1000, { message: "Back content must be 1000 characters or less." })
       .optional(), // 任意入力
   })
   .refine((data) => data.front !== undefined || data.back !== undefined, {
-    message: 'At least one field (front or back) must be provided for update.',
-    path: ['front', 'back'], // エラーメッセージを関連付けるフィールド
+    message: "At least one field (front or back) must be provided for update.",
+    path: ["front", "back"], // エラーメッセージを関連付けるフィールド
   }); // front か back のどちらかは必須とする
 
 // スキーマから TypeScript 型を生成してエクスポート
@@ -5706,18 +5760,18 @@ export const deckUpdateSchema = z
   .object({
     name: z
       .string()
-      .min(1, { message: 'Deck name cannot be empty if provided.' })
-      .max(100, { message: 'Deck name must be 100 characters or less.' })
+      .min(1, { message: "Deck name cannot be empty if provided." })
+      .max(100, { message: "Deck name must be 100 characters or less." })
       .optional(),
     description: z
       .string()
-      .max(500, { message: 'Description must be 500 characters or less.' })
+      .max(500, { message: "Description must be 500 characters or less." })
       .nullable() // Allow null for clearing description
       .optional(),
   })
   .refine((data) => data.name !== undefined || data.description !== undefined, {
     message:
-      'At least one field (name or description) must be provided for update.',
+      "At least one field (name or description) must be provided for update.",
     // Zod 3.23+ では refine の第二引数で path を指定可能
     // path: ["name", "description"], // 関連フィールドを指定
   });
@@ -5727,6 +5781,7 @@ export type DeckUpdatePayload = z.infer<typeof deckUpdateSchema>;
 ```
 
 ## File: services/ai.service.ts
+
 ```typescript
 // src/services/ai.service.ts (Resultパターン + Lintエラー修正適用版)
 
@@ -6124,25 +6179,26 @@ export const generateTranslation = async (
 ```
 
 ## File: services/card.service.ts
+
 ```typescript
 // src/services/card.service.ts (全ての修正を反映した完全版)
 
-import prisma from '@/lib/db';
-import { Card, AiContentType, AICardContent, Prisma } from '@prisma/client'; // Prisma 名前空間を追加
+import prisma from "@/lib/db";
+import { Card, AiContentType, AICardContent, Prisma } from "@prisma/client"; // Prisma 名前空間を追加
 import {
   AppError,
   NotFoundError,
   PermissionError,
   DatabaseError,
   ConflictError, // ConflictError をインポート
-} from '@/lib/errors';
+} from "@/lib/errors";
 // generateExplanation/Translation は Result を返す版をインポート
 import {
   generateExplanation,
   generateTranslation,
-} from '@/services/ai.service';
-import { type Result } from '@/types';
-import type { CardUpdatePayload } from '@/lib/zod'; // updateCard で使用
+} from "@/services/ai.service";
+import { type Result } from "@/types";
+import type { CardUpdatePayload } from "@/lib/zod"; // updateCard で使用
 
 // --- 型定義 ---
 interface GetCardsByDeckIdOptions {
@@ -6167,7 +6223,7 @@ type AiContentCreateData = {
 export const getCardsByDeckId = async (
   userId: string,
   deckId: string,
-  options: GetCardsByDeckIdOptions = {}
+  options: GetCardsByDeckIdOptions = {},
 ): Promise<GetCardsByDeckIdResult> => {
   const limit = options.limit ?? 10;
   const offset = options.offset ?? 0;
@@ -6186,7 +6242,7 @@ export const getCardsByDeckId = async (
     }
     if (deck.userId !== userId) {
       throw new PermissionError(
-        `User does not have permission to access deck with ID ${deckId}.`
+        `User does not have permission to access deck with ID ${deckId}.`,
       );
     }
 
@@ -6194,7 +6250,7 @@ export const getCardsByDeckId = async (
     const [cards, totalItems] = await prisma.$transaction([
       prisma.card.findMany({
         where: { deckId: deckId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: "asc" },
         skip: validatedOffset,
         take: validatedLimit,
         include: {
@@ -6226,7 +6282,7 @@ export const getCardsByDeckId = async (
     // --- ↓↓↓ Explicit type guard ↓↓↓ ---
     console.error(
       `Database error fetching cards for deck ${deckId} by user ${userId}:`,
-      error
+      error,
     );
     let originalError: Error | undefined = undefined;
     if (error instanceof Error) {
@@ -6234,15 +6290,15 @@ export const getCardsByDeckId = async (
     }
     // --- ↑↑↑ Type guard end ↑↑↑ ---
     throw new DatabaseError(
-      'Failed to fetch cards due to a database error.',
-      originalError
+      "Failed to fetch cards due to a database error.",
+      originalError,
     ); // Pass potentially narrowed error
   }
 };
 
 export const createCard = async (
   userId: string,
-  data: { deckId: string; front: string; back: string }
+  data: { deckId: string; front: string; back: string },
 ): Promise<Card> => {
   // Returns the created Card object
   const { deckId, front, back } = data;
@@ -6259,7 +6315,7 @@ export const createCard = async (
     }
     if (deck.userId !== userId) {
       throw new PermissionError(
-        `User does not have permission to add cards to deck ${deckId}.`
+        `User does not have permission to add cards to deck ${deckId}.`,
       );
     }
 
@@ -6274,7 +6330,7 @@ export const createCard = async (
     // --- ↓↓↓ Explicit type guard ↓↓↓ ---
     console.error(
       `Database error during initial card creation for deck ${deckId} by user ${userId}:`,
-      error
+      error,
     );
     let originalError: Error | undefined = undefined;
     if (error instanceof Error) {
@@ -6282,19 +6338,19 @@ export const createCard = async (
     }
     // --- ↑↑↑ Type guard end ↑↑↑ ---
     throw new DatabaseError(
-      'Failed to create card due to a database error.',
-      originalError
+      "Failed to create card due to a database error.",
+      originalError,
     ); // Pass potentially narrowed error
   }
 
   // --- 3. AI Explanation Generation & Save (Result pattern handling) ---
-  const explanationLanguage = 'en'; // TODO: Dynamic
+  const explanationLanguage = "en"; // TODO: Dynamic
   console.log(
-    `[Card Service] Attempting to generate explanation for card ${newCard.id}, lang: ${explanationLanguage}`
+    `[Card Service] Attempting to generate explanation for card ${newCard.id}, lang: ${explanationLanguage}`,
   );
   const explanationResult = await generateExplanation(
     front,
-    explanationLanguage
+    explanationLanguage,
   ); // Returns Result
 
   if (explanationResult.ok) {
@@ -6308,24 +6364,24 @@ export const createCard = async (
         },
       });
       console.log(
-        `[Card Service] Explanation (${explanationLanguage}) saved for card ${newCard.id}.`
+        `[Card Service] Explanation (${explanationLanguage}) saved for card ${newCard.id}.`,
       );
     } catch (dbError: unknown) {
       // ★ catch (dbError: unknown) ★
       // P2002: Unique constraint failed (content already exists)
       if (
         dbError instanceof Prisma.PrismaClientKnownRequestError &&
-        dbError.code === 'P2002'
+        dbError.code === "P2002"
       ) {
         console.warn(
-          `[Card Service] Explanation (${explanationLanguage}) likely already exists for card ${newCard.id}.`
+          `[Card Service] Explanation (${explanationLanguage}) likely already exists for card ${newCard.id}.`,
         );
         // Don't throw, just log the warning in this case for createCard
       } else {
         // Log other DB errors during AICardContent creation
         console.error(
           `[Card Service] Failed to save explanation for card ${newCard.id}. DB Error:`,
-          dbError
+          dbError,
         );
       }
     }
@@ -6334,20 +6390,20 @@ export const createCard = async (
     console.error(
       `[Card Service] Failed to generate explanation for card ${newCard.id}. Error:`,
       explanationResult.error.message,
-      explanationResult.error.details ?? ''
+      explanationResult.error.details ?? "",
     );
   }
 
   // --- 4. AI Translation Generation & Save (Result pattern handling) ---
-  const sourceLanguage = 'en'; // TODO: Dynamic
-  const targetLanguage = 'ja'; // TODO: Dynamic
+  const sourceLanguage = "en"; // TODO: Dynamic
+  const targetLanguage = "ja"; // TODO: Dynamic
   console.log(
-    `[Card Service] Attempting to generate translation for card ${newCard.id}, ${sourceLanguage} -> ${targetLanguage}`
+    `[Card Service] Attempting to generate translation for card ${newCard.id}, ${sourceLanguage} -> ${targetLanguage}`,
   );
   const translationResult = await generateTranslation(
     front,
     sourceLanguage,
-    targetLanguage
+    targetLanguage,
   ); // Returns Result
 
   if (translationResult.ok) {
@@ -6361,21 +6417,21 @@ export const createCard = async (
         },
       });
       console.log(
-        `[Card Service] Translation (${targetLanguage}) saved for card ${newCard.id}.`
+        `[Card Service] Translation (${targetLanguage}) saved for card ${newCard.id}.`,
       );
     } catch (dbError: unknown) {
       // ★ catch (dbError: unknown) ★
       if (
         dbError instanceof Prisma.PrismaClientKnownRequestError &&
-        dbError.code === 'P2002'
+        dbError.code === "P2002"
       ) {
         console.warn(
-          `[Card Service] Translation (${targetLanguage}) likely already exists for card ${newCard.id}.`
+          `[Card Service] Translation (${targetLanguage}) likely already exists for card ${newCard.id}.`,
         );
       } else {
         console.error(
           `[Card Service] Failed to save translation for card ${newCard.id}. DB Error:`,
-          dbError
+          dbError,
         );
       }
     }
@@ -6384,7 +6440,7 @@ export const createCard = async (
     console.error(
       `[Card Service] Failed to generate translation for card ${newCard.id}. Error:`,
       translationResult.error.message,
-      translationResult.error.details ?? ''
+      translationResult.error.details ?? "",
     );
   }
 
@@ -6395,7 +6451,7 @@ export const createCard = async (
 export const deleteCard = async (
   userId: string,
   deckId: string,
-  cardId: string
+  cardId: string,
 ): Promise<void> => {
   try {
     // 1. Verify ownership via deck using findFirstOrThrow
@@ -6409,13 +6465,13 @@ export const deleteCard = async (
     let isPrismaNotFoundError = false;
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2025'
+      error.code === "P2025"
     ) {
       isPrismaNotFoundError = true; // findFirstOrThrow throws P2025 if not found
     }
     if (isPrismaNotFoundError || error instanceof NotFoundError) {
       throw new NotFoundError(
-        `Card with ID ${cardId} not found or user does not have permission.`
+        `Card with ID ${cardId} not found or user does not have permission.`,
       );
     }
     if (error instanceof PermissionError) {
@@ -6425,7 +6481,7 @@ export const deleteCard = async (
     // --- ↓↓↓ Explicit type guard ↓↓↓ ---
     console.error(
       `Database error deleting card ${cardId} from deck ${deckId} by user ${userId}:`,
-      error
+      error,
     );
     let originalError: Error | undefined = undefined;
     if (error instanceof Error) {
@@ -6433,8 +6489,8 @@ export const deleteCard = async (
     }
     // --- ↑↑↑ Type guard end ↑↑↑ ---
     throw new DatabaseError(
-      'Failed to delete card due to a database error.',
-      originalError
+      "Failed to delete card due to a database error.",
+      originalError,
     );
   }
 };
@@ -6443,7 +6499,7 @@ export const updateCard = async (
   userId: string,
   deckId: string,
   cardId: string,
-  data: CardUpdatePayload
+  data: CardUpdatePayload,
 ): Promise<Result<Card, AppError>> => {
   // Returns Result
   try {
@@ -6456,7 +6512,7 @@ export const updateCard = async (
       return {
         ok: false,
         error: new NotFoundError(
-          `Card ${cardId} not found or permission denied for deck ${deckId}.`
+          `Card ${cardId} not found or permission denied for deck ${deckId}.`,
         ),
       };
     }
@@ -6478,7 +6534,7 @@ export const updateCard = async (
     // --- ↓↓↓ Explicit type guard ↓↓↓ ---
     console.error(
       `Database error updating card ${cardId} in deck ${deckId} by user ${userId}:`,
-      error
+      error,
     );
     let originalError: Error | undefined = undefined;
     if (error instanceof Error) {
@@ -6487,7 +6543,7 @@ export const updateCard = async (
     // --- ↑↑↑ Type guard end ↑↑↑ ---
     return {
       ok: false,
-      error: new DatabaseError('Failed to update card.', originalError),
+      error: new DatabaseError("Failed to update card.", originalError),
     }; // Return error Result
   }
 };
@@ -6496,11 +6552,11 @@ export const updateCard = async (
 export const saveAiContent = async (
   userId: string,
   cardId: string,
-  data: AiContentCreateData
+  data: AiContentCreateData,
 ): Promise<Result<AICardContent, AppError>> => {
   const { contentType, language, content } = data;
   console.log(
-    `[Card Service] Attempting to save AI content for card ${cardId}: Type=${contentType}, Lang=${language}`
+    `[Card Service] Attempting to save AI content for card ${cardId}: Type=${contentType}, Lang=${language}`,
   );
   try {
     // 1. Verify card existence and user ownership via the deck
@@ -6518,7 +6574,7 @@ export const saveAiContent = async (
       return {
         ok: false,
         error: new PermissionError(
-          `User does not have permission to modify card ${cardId}.`
+          `User does not have permission to modify card ${cardId}.`,
         ),
       };
     }
@@ -6533,26 +6589,26 @@ export const saveAiContent = async (
       },
     });
     console.log(
-      `[Card Service] Successfully saved AI content ${newAiContent.id} for card ${cardId}.`
+      `[Card Service] Successfully saved AI content ${newAiContent.id} for card ${cardId}.`,
     );
     return { ok: true, value: newAiContent };
   } catch (error: unknown) {
     // ★ Correct catch block already here ★
     console.error(
       `[Card Service] Database error saving AI content for card ${cardId}:`,
-      error
+      error,
     );
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
+      error.code === "P2002"
     ) {
       console.warn(
-        `[Card Service] AI content (${contentType}/${language}) likely already exists for card ${cardId}.`
+        `[Card Service] AI content (${contentType}/${language}) likely already exists for card ${cardId}.`,
       );
       return {
         ok: false,
         error: new ConflictError(
-          `AI content (${contentType}/${language}) already exists.`
+          `AI content (${contentType}/${language}) already exists.`,
         ),
       };
     }
@@ -6562,13 +6618,14 @@ export const saveAiContent = async (
     }
     return {
       ok: false,
-      error: new DatabaseError('Failed to save AI content.', originalError),
+      error: new DatabaseError("Failed to save AI content.", originalError),
     };
   }
 }; // End of saveAiContent
 ```
 
 ## File: services/deck.service.ts
+
 ```typescript
 import prisma from "@/lib/db";
 import { Prisma } from "@prisma/client";
@@ -6887,6 +6944,7 @@ export const deleteDeck = async (
 ```
 
 ## File: types/api.types.ts
+
 ```typescript
 // src/types/api.types.ts (AICardContent 導入 + DeckApiResponse 修正版)
 
@@ -6898,14 +6956,14 @@ import {
   type Card as PrismaCard,
   type AICardContent as PrismaAICardContent,
   type AiContentType,
-} from '../../node_modules/.prisma/client';
+} from "../../node_modules/.prisma/client";
 
 // Zod から Payload 型をインポート (変更なし)
 // Corrected import path from 'lib/zod' to '../lib/zod'
 import {
   type DeckCreatePayload as DeckCreatePayloadFromZod,
   type DeckUpdatePayload as DeckUpdatePayloadFromZod,
-} from '../lib/zod';
+} from "../lib/zod";
 
 /**
  * Payload for creating a new deck (POST /api/decks).
@@ -6924,7 +6982,7 @@ export type DeckUpdatePayload = DeckUpdatePayloadFromZod;
  */
 export type AICardContentApiResponse = Pick<
   PrismaAICardContent, // Use alias
-  'id' | 'contentType' | 'language' | 'content' | 'createdAt' | 'updatedAt'
+  "id" | "contentType" | "language" | "content" | "createdAt" | "updatedAt"
   // cardId は CardApiResponse にネストされるため通常は含めない
 >;
 // --- ↑↑↑ 新しい型定義ここまで ↑↑↑ ---
@@ -6938,15 +6996,15 @@ export type AICardContentApiResponse = Pick<
 export type CardApiResponse = Pick<
   PrismaCard, // Use alias
   // Card の基本フィールドを選択
-  | 'id'
-  | 'front'
-  | 'back'
-  | 'deckId'
-  | 'createdAt'
-  | 'updatedAt'
-  | 'interval'
-  | 'easeFactor'
-  | 'nextReviewAt'
+  | "id"
+  | "front"
+  | "back"
+  | "deckId"
+  | "createdAt"
+  | "updatedAt"
+  | "interval"
+  | "easeFactor"
+  | "nextReviewAt"
 
   // explanation, translation は削除された
 > & {
@@ -6963,7 +7021,7 @@ export type CardApiResponse = Pick<
  */
 export type DeckApiResponse = Pick<
   PrismaDeck,
-  'id' | 'name' | 'description' | 'createdAt' | 'updatedAt' | 'userId'
+  "id" | "name" | "description" | "createdAt" | "updatedAt" | "userId"
 > & {
   cardCount?: number; // ★ Add this optional property ★
 };
@@ -7012,36 +7070,38 @@ export type { AiContentType }; // ← この行を追加
 ```
 
 ## File: types/index.ts
+
 ```typescript
 /**
  * Barrel file for exporting types from the types directory.
  */
-import type { AppError } from '../lib/errors'; // AppError をインポート
+import type { AppError } from "../lib/errors"; // AppError をインポート
 
 export type Result<T, E = AppError> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
-export * from './api.types';
+export * from "./api.types";
 
 // Add exports from other type files here as needed
 // export * from './another.types';
 ```
 
 ## File: middleware.ts
+
 ```typescript
 // src/middleware.ts
-import { NextRequest, NextResponse } from 'next/server';
-import createIntlMiddleware from 'next-intl/middleware';
-import { createMiddlewareClient } from '@/lib/supabase';
+import { NextRequest, NextResponse } from "next/server";
+import createIntlMiddleware from "next-intl/middleware";
+import { createMiddlewareClient } from "@/lib/supabase";
 
-const locales = ['en', 'ja'];
-const defaultLocale = 'en'; // Needs to be uncommented
+const locales = ["en", "ja"];
+const defaultLocale = "en"; // Needs to be uncommented
 
 const intlMiddleware = createIntlMiddleware({
   locales: locales,
   defaultLocale: defaultLocale,
-  localePrefix: 'as-needed',
+  localePrefix: "as-needed",
 });
 
 export async function middleware(req: NextRequest) {
@@ -7056,8 +7116,8 @@ export async function middleware(req: NextRequest) {
   // We check headers because intlMiddleware might add locale-specific headers
   // even without a full redirect/rewrite.
   if (
-    intlResponse.headers.get('location') ||
-    intlResponse.headers.get('x-middleware-rewrite')
+    intlResponse.headers.get("location") ||
+    intlResponse.headers.get("x-middleware-rewrite")
   ) {
     return intlResponse;
   }
@@ -7068,7 +7128,7 @@ export async function middleware(req: NextRequest) {
     const supabase = createMiddlewareClient(req, res);
     await supabase.auth.getSession(); // Refreshes session cookie if needed
   } catch (e) {
-    console.error('Supabase middleware error:', e);
+    console.error("Supabase middleware error:", e);
     // Optionally handle the error, maybe return an error response
     // For now, just log it and continue.
   }
@@ -7084,12 +7144,13 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     // Match all paths except for specific assets and API routes.
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)', // Added 'api|' to exclude API routes
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)", // Added 'api|' to exclude API routes
   ],
 };
 ```
 
 ## File: app/globals.css
+
 ```css
 @import "tailwindcss";
 
@@ -7123,6 +7184,7 @@ body {
 ```
 
 ## File: app/layout.tsx
+
 ```typescript
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -7165,6 +7227,7 @@ export default function RootLayout({
 ```
 
 ## File: app/page.tsx
+
 ```typescript
 import Image from 'next/image';
 

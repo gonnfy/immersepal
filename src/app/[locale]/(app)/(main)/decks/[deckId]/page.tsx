@@ -1,16 +1,16 @@
-import { notFound } from 'next/navigation'; // Import notFound for 404 handling
-import { getServerUserId } from '@/lib/auth'; // Import function to get user ID
-import { getDeckById } from '@/services/deck.service'; // Import the service function
+import { notFound } from "next/navigation";
+import { getServerUserId } from "@/lib/auth";
+import { getDeckById } from "@/services/deck.service";
 import {
   NotFoundError,
   PermissionError,
   DatabaseError,
   isAppError,
-} from '@/lib/errors';
-import { CardList } from '@/components/features/CardList'; // Import the CardList component
-import { CardCreateForm } from '@/components/features/CardCreateForm'; // Import the CardCreateForm component
+} from "@/lib/errors";
+import { CardList } from "@/components/features/CardList";
+import { CardCreateForm } from "@/components/features/CardCreateForm";
+import Link from "next/link";
 
-// Define the expected type based on the *updated* service function (no cards included)
 type DeckData = {
   id: string;
   name: string;
@@ -18,15 +18,13 @@ type DeckData = {
   createdAt: Date;
   updatedAt: Date;
   userId: string;
-  // 'cards' property is removed
 };
 
 interface DeckDetailPageProps {
-  // Indicate that params might be a promise that needs resolving
   params:
     | Promise<{
         deckId: string;
-        locale: string; // Locale might be needed for translations later
+        locale: string;
       }>
     | {
         deckId: string;
@@ -35,7 +33,6 @@ interface DeckDetailPageProps {
 }
 
 export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
-  // Await params before accessing its properties
   const resolvedParams = await params;
   const { deckId } = resolvedParams;
 
@@ -43,28 +40,23 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
   let errorInfo: { message: string; code?: string } | null = null;
 
   try {
-    // 1. Get User ID directly in the RSC
     const userId = await getServerUserId();
     if (!userId) {
-      // Handle unauthenticated user - maybe redirect or show a specific message
-      // For now, treating as a permission error for simplicity
-      throw new PermissionError('Authentication required to view this deck.');
+      throw new PermissionError("Authentication required to view this deck.");
     }
 
-    // Fetch deck data (without cards)
     deck = await getDeckById(userId, deckId);
   } catch (error) {
-    console.error('Error in DeckDetailPage:', error); // Log the error
+    console.error("Error in DeckDetailPage:", error); // Log the error
 
-    // --- Error Handling (Directly from Service Errors) ---
     if (error instanceof NotFoundError) {
       notFound(); // Trigger Next.js 404 page
     } else if (error instanceof PermissionError) {
-      errorInfo = { message: error.message, code: 'FORBIDDEN' };
+      errorInfo = { message: error.message, code: "FORBIDDEN" };
     } else if (error instanceof DatabaseError) {
       errorInfo = {
-        message: 'A database error occurred while loading the deck.',
-        code: 'DATABASE_ERROR',
+        message: "A database error occurred while loading the deck.",
+        code: "DATABASE_ERROR",
       };
     } else if (isAppError(error)) {
       // Catch other AppErrors
@@ -72,8 +64,8 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
     } else {
       // Handle unexpected errors
       errorInfo = {
-        message: 'An unexpected error occurred.',
-        code: 'INTERNAL_SERVER_ERROR',
+        message: "An unexpected error occurred.",
+        code: "INTERNAL_SERVER_ERROR",
       };
     }
   }
@@ -82,14 +74,13 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
   if (errorInfo) {
     return (
       <div className="p-4 text-red-600">
-        Error loading deck: {errorInfo.message}{' '}
-        {errorInfo.code ? `(Code: ${errorInfo.code})` : ''}
+        Error loading deck: {errorInfo.message}{" "}
+        {errorInfo.code ? `(Code: ${errorInfo.code})` : ""}
       </div>
     );
   }
 
   // --- Render Success State ---
-  // If we reach here and deck is still null, something went wrong (should be caught above)
   if (!deck) {
     return (
       <div className="p-4 text-red-600">
@@ -103,15 +94,20 @@ export default async function DeckDetailPage({ params }: DeckDetailPageProps) {
       {/* Deck Details */}
       <h1 className="text-3xl font-bold mb-2">{deck.name}</h1>
       <p className="text-gray-600 mb-6">
-        {deck.description || 'No description provided.'}
+        {deck.description || "No description provided."}
       </p>
+      <Link href={`/decks/${deck.id}/acquisition`}>
+        <button className="w-full sm:w-auto px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+          Start Acquisition Session
+        </button>
+      </Link>
 
       {/* Separator or spacing */}
       <hr className="my-6" />
 
       {/* Add New Card Form (Client Component) */}
       <div className="mb-8">
-        {' '}
+        {" "}
         {/* Add some margin below the form */}
         <h2 className="text-2xl font-semibold mb-4">Add New Card</h2>
         <CardCreateForm deckId={deck.id} />
