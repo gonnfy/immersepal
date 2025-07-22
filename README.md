@@ -1,4 +1,4 @@
-# immerseal
+# immersepal
 [![Build Status](https://img.shields.io/github/actions/workflow/status/shibuyus/immersepal/build-and-push.yml?branch=main)](https://github.com/shibuyus/immersepal/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
