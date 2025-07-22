@@ -7,6 +7,14 @@ on:
     paths-ignore:
       - "**.md"
       - "docs/**"
+      - "**.png"
+      - "**.jpg"
+      - "**.jpeg"
+      - "**.gif"
+      - "**.svg"
+      - ".prettierrc"
+      - "biome.json"
+      - ".husky/**"
 
 env:
   GCP_PROJECT_ID: adept-bridge-457703-u9

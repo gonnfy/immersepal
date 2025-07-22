@@ -14,8 +14,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ImmersePal",
+  title: "immersepal",
   description: "AIと共に、実践的なイマージョン学習を加速する。",
+  icons: {
+    icon: "/immersepalLogo.png",
+  },
 };
 
 export default function RootLayout({

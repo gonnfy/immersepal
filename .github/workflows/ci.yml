@@ -9,6 +9,14 @@ on:
     paths-ignore:
       - "**.md"
       - "docs/**"
+      - "**.png"
+      - "**.jpg"
+      - "**.jpeg"
+      - "**.gif"
+      - "**.svg"
+      - ".prettierrc"
+      - "biome.json"
+      - ".husky/**"
   pull_request:
     branches:
       - main
