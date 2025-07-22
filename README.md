@@ -1,4 +1,4 @@
-# ImmersePal
+# immersePal
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/shibuyus/immersepal/build-and-push.yml?branch=main)](https://github.com/shibuyus/immersepal/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -13,8 +13,8 @@
 
 すぐにアプリを試せるテスト用アカウントです。
 
-- **Email:** `a@b.c`
-- **Password:** `abc123`
+- **Email:** `test@example.com`
+- **Password:** `password`
 
 ---
 
@@ -22,15 +22,25 @@
 
 - **摩擦なきキャプチャー:** Webサイトや動画で出会った未知のフレーズを、文脈ごとストレスなく保存。
 - **リアルなAI音声:** 自然なAI音声で、リスニングと発音練習を強力にサポート。
-- **柔軟な学習管理:** デッキのシンプルさと、タグの柔軟性を両立させた独自の学習体験を提供。
+- **インテリジェントな復習機能:** 間隔反復システムが、あなたの習熟度に合わせて次に復習すべきカードとタイミングを自動で決定し、記憶の定着を最大化します。
 
 ---
 
 ## Screenshots
 
-[デッキ一覧画面の画像]
+[**homepage(en)**](https://immersepal.com/en)![](https://github.com/shibuyus/immersepal/blob/main/images/Screenshot%202025-07-22%20at%209.54.51.png)
 
-[カード詳細画面の画像]
+|login|decks|
+|---|---|
+|![](https://github.com/shibuyus/immersepal/blob/main/images/Screenshot%202025-07-22%20at%209.50.06.png)|![](https://github.com/shibuyus/immersepal/blob/main/images/Screenshot%202025-07-22%20at%209.28.20%20(3).png)|
+
+|cards1|cards2|
+|---|---|
+|![](https://github.com/shibuyus/immersepal/blob/main/images/Screenshot%202025-07-22%20at%209.29.40%20(3).png)|![](https://github.com/shibuyus/immersepal/blob/main/images/Screenshot%202025-07-22%20at%209.29.59%20(3).png)|
+
+|learning1|learning2|
+|---|---|
+|![](https://github.com/shibuyus/immersepal/blob/main/images/Screenshot%202025-07-22%20at%209.01.47%20(3).png)|![](https://github.com/shibuyus/immersepal/blob/main/images/Screenshot%202025-07-22%20at%209.02.42%20(3).png)|
 
 ---
 
@@ -77,10 +87,11 @@
 
 ## 📝 今後の展望 (Roadmap)
 
-- [ ] Chrome拡張機能版の開発
-- [ ] モバイルアプリ版の開発 (React Native / Expo)
+- [ ] タグ機能
 - [ ] 学習リマインダー通知機能
 - [ ] ユーザー間のデッキ共有機能
+- [ ] Chrome拡張機能版の開発
+- [ ] モバイルアプリ版の開発 (React Native / Expo)
 
 ---
 
